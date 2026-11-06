@@ -1,0 +1,10 @@
+{
+  "default": "qwen3.5-9b",
+  "models": {
+    "qwen3.5-9b": {
+      "path": "C:/Users/doche/.lmstudio/models/lmstudio-community/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q6_K.gguf",
+      "ctx": 65536,
+      "notes": "Qwen3.5 9B Q6_K. Measured 8.3 GB VRAM in use at 64k context (3.9 GB free with nothing else running)."
+    }
+  }
+}
