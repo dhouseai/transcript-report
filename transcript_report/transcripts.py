@@ -24,7 +24,7 @@ def spoken_time(timestamp: str) -> str:
 def clean_transcript(text: str) -> str:
     """Remove YouTube's timestamps (and their spoken form) and blank lines."""
     lines = []
-    for line in text.lstrip("﻿").splitlines():
+    for line in text.lstrip("\ufeff").splitlines():
         m = TIMESTAMP_RE.match(line)
         if m:
             rest = line[m.end():]
@@ -52,7 +52,7 @@ def parse_subtitles(text: str) -> str:
     removed. YouTube's auto-generated .vtt repeats each line in the next cue ("rolling"
     captions), so a line identical to the one before it is dropped."""
     lines: list[str] = []
-    blocks = re.split(r"\n[ \t]*\n", text.lstrip("﻿").replace("\r\n", "\n"))
+    blocks = re.split(r"\n[ \t]*\n", text.lstrip("\ufeff").replace("\r\n", "\n"))
     for block in blocks:
         block_lines = [b.strip() for b in block.strip().split("\n")]
         if not block_lines or block_lines[0].startswith(_SKIP_BLOCKS):

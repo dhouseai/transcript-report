@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from transcript_report import cli
+from transcript_report import __version__, cli
 from transcript_report.config import Settings
 from transcript_report.lmstudio import LoadedInstance
 
@@ -39,7 +39,7 @@ class Main(unittest.TestCase):
              self.assertRaises(SystemExit) as cm:
             cli.main(["--version"], prog="tr")
         self.assertEqual(cm.exception.code, 0)
-        self.assertIn("tr 0.1.0", out.getvalue())
+        self.assertIn(f"tr {__version__}", out.getvalue())
 
 
 class OutPath(unittest.TestCase):
