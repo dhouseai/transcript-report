@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transcript-report"
+dynamic = ["version"]
+description = "Turn a video transcript into an honest, practical report with a local model in LM Studio."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Nolan Docherty" }]
+keywords = ["youtube", "transcript", "llm", "lm-studio", "local-ai", "summary"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing",
+]
+# No dependencies: only the Python standard library is used.
+
+[project.urls]
+# Replace <owner> with the GitHub user or organisation once the repository exists.
+Homepage = "https://github.com/<owner>/transcript-report"
+Documentation = "https://github.com/<owner>/transcript-report/blob/main/docs/usage.md"
+Issues = "https://github.com/<owner>/transcript-report/issues"
+Changelog = "https://github.com/<owner>/transcript-report/blob/main/CHANGELOG.md"
+
+[project.scripts]
+transcript-report = "transcript_report.cli:main"
+
+[tool.setuptools]
+packages = ["transcript_report"]
+
+[tool.setuptools.dynamic]
+version = { attr = "transcript_report.__version__" }
+
+[tool.setuptools.package-data]
+transcript_report = ["prompts/*.md", "settings.example.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["llama.cpp", "reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

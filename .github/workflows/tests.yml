@@ -1,0 +1,66 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install ruff
+      - run: ruff check .
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile
+        run: python -m compileall -q analyse_video.py transcript_report tests
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+      - name: Command line runs from the clone
+        run: |
+          python analyse_video.py --version
+          python analyse_video.py --help
+
+  install:
+    # Installs the package the way users do, then runs it from outside the clone.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install .
+      - name: Run the installed package
+        shell: bash
+        env:
+          TRANSCRIPT_REPORT_HOME: ${{ runner.temp }}/tr-home
+        run: |
+          cd "$RUNNER_TEMP"
+          python -m transcript_report --version
+          transcript-report --version
+          python -m transcript_report --init
+          test -f "$TRANSCRIPT_REPORT_HOME/settings.json"
+          test -d "$TRANSCRIPT_REPORT_HOME/transcripts"

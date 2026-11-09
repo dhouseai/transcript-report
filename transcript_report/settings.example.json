@@ -1,0 +1,26 @@
+{
+  "_help": "Relative paths are inside the folder this file is in; full paths like C:/Users/you/Videos/transcripts also work. Use / or \\\\ in paths. Settings starting with _ are notes.",
+  "transcripts_folder": "transcripts",
+  "done_folder": "transcripts/done",
+  "reports_folder": "reports",
+  "report_format": "md",
+
+  "_prompts_help": "prompts_folder: a folder with your own report_prompt.md and/or section_notes_prompt.md. Empty: the built-in prompts.",
+  "prompts_folder": "",
+
+  "_lmstudio_help": "lmstudio_url: LM Studio on another computer, e.g. http://192.168.1.20:1234. Empty: LM Studio on this computer, started and stopped as needed.",
+  "lmstudio_url": "",
+  "_lmstudio_api_token_help": "lmstudio_api_token: only if LM Studio's server has Require Authentication turned on. Empty: none, or the LM_API_TOKEN environment variable.",
+  "lmstudio_api_token": "",
+
+  "_models_help": "default_model is used when --model isn't given. key = the model's LM Studio key (run `lms ls`); ctx = context size in tokens; sampling (optional) overrides temperature, top_p, top_k, min_p, repeat_penalty.",
+  "default_model": "my-model",
+  "models": {
+    "my-model": {
+      "key": "REPLACE-with-a-key-from-lms-ls",
+      "ctx": 32768,
+      "sampling": {"temperature": 0.4},
+      "notes": "Anything you like, e.g. which quantisation this is and how much VRAM it uses."
+    }
+  }
+}

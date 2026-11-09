@@ -1,0 +1,36 @@
+# Your own settings: copy settings.example.json to settings.json
+/settings.json
+
+# Transcripts: keep the folder (the script looks in it), not the files
+/transcripts/*
+!/transcripts/.gitkeep
+
+# Generated reports, including ones saved elsewhere with --out
+/reports/*
+*_report.md
+*_report.pdf
+*_section_notes.md
+!/examples/*.md
+!/.github/ISSUE_TEMPLATE/*.md
+
+# Local notes and old binaries
+/TODO.md
+/code_review_prompt.md
+/llama.cpp/
+/Raw Transcripts/
+
+# Editors
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Packaging
+build/
+dist/
+*.egg-info/
