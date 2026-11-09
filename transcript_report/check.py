@@ -57,7 +57,7 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
         line(FAIL, "model setting", str(e))
         model = None
 
-    client = LMStudio(port, url_arg or settings.lmstudio_url, settings.lmstudio_api_token)
+    client = LMStudio(port, url_arg or settings.server_url, settings.api_token)
     check_server(client, model, line)
 
     browser = find_browser()

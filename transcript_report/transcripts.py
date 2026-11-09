@@ -57,9 +57,10 @@ def parse_subtitles(text: str) -> str:
         block_lines = [b.strip() for b in block.strip().split("\n")]
         if not block_lines or block_lines[0].startswith(_SKIP_BLOCKS):
             continue
-        for line in block_lines:
-            if not line or line.isdigit() or "-->" in line:
-                continue                                    # cue number or timing line
+        # The text follows the timing line; before it there's only a cue number or id.
+        # Without a timing line, the block is text that a stray blank line split off.
+        timing = next((n for n, line in enumerate(block_lines) if "-->" in line), -1)
+        for line in block_lines[timing + 1:]:
             line = html.unescape(_TAG_RE.sub("", line))
             line = re.sub(r"\s+", " ", _SOUND_RE.sub("", line)).strip()
             if line and (not lines or line != lines[-1]):

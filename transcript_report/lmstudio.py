@@ -72,7 +72,7 @@ class LMStudio:
             hint = ""
             if e.code in (401, 403):
                 hint = ("\nThe server requires an API token: create one in LM Studio's server "
-                        "settings and set \"lmstudio_api_token\" in settings.json (or the "
+                        "settings and set \"api_token\" in settings.json (or the "
                         f"{TOKEN_ENV} environment variable)."
                         if not self.api_token else "\nCheck that the API token is still valid.")
             raise APIError(f"LM Studio error {e.code} on {path}: {error_message(read_error(e))}"
@@ -155,7 +155,7 @@ def ensure_server(client: LMStudio) -> bool:
         except APIError as e:
             raise APIError(
                 f"{e}\nStart LM Studio's server on that computer, with \"Serve on Local Network\" "
-                f"turned on in its server settings, and check lmstudio_url / --lmstudio-url.", e.status) from None
+                f"turned on in its server settings, and check server_url / --server-url.", e.status) from None
         return False
     _, out = lms("server", "status", "--json")
     status = {}

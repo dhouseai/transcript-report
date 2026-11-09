@@ -20,6 +20,10 @@ class Inline(unittest.TestCase):
         self.assertEqual(inline("[v](https://x.com/_foo_/bar)"),
                          '<a href="https://x.com/_foo_/bar">v</a>')
 
+    def test_brackets_in_url(self):
+        self.assertEqual(inline("[P](https://en.wikipedia.org/wiki/P_(x)) and (more)"),
+                         '<a href="https://en.wikipedia.org/wiki/P_(x)">P</a> and (more)')
+
     def test_only_safe_link_schemes(self):
         self.assertEqual(inline("[x](javascript:alert(1))"), "[x](javascript:alert(1))")
 

@@ -62,7 +62,8 @@ a { color: #1a4fa0; }
 """
 
 _CODE_RE = re.compile(r"`([^`]+)`")
-_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+# The URL may hold one level of brackets, as Wikipedia's do: .../Placebo_(disambiguation)
+_LINK_RE = re.compile(r"\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)")
 PLACEHOLDER = "\uE000"   # private-use character marking a stashed snippet: \uE000<n>\uE000
 _STASH_RE = re.compile(PLACEHOLDER + r"(\d+)" + PLACEHOLDER)
 SAFE_LINK_SCHEMES = ("http://", "https://", "mailto:")

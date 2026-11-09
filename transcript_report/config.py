@@ -23,7 +23,7 @@ PROMPTS_DIR = PACKAGE_DIR / "prompts"                         # the built-in pro
 EXAMPLE_SETTINGS_FILE = PACKAGE_DIR / "settings.example.json"
 SETTINGS_NAME = "settings.json"
 HOME_ENV = "TRANSCRIPT_REPORT_HOME"
-TOKEN_ENV = "LM_API_TOKEN"   # LM Studio API token, when settings.json has no "lmstudio_api_token"
+TOKEN_ENV = "LM_API_TOKEN"   # LM Studio API token, when settings.json has no "api_token"
 DEFAULT_PORT = 1234
 
 DEFAULT_CTX = 32768       # context size when settings.json doesn't give one
@@ -52,9 +52,9 @@ STRING_DEFAULTS = {
     "prompts_folder": "",    # your own prompt files; empty, or any file missing there: the built-in ones
     "report_format": "md",   # "md" or "pdf": what the report is saved as when --pdf/--md isn't given
     "default_model": "",     # name from "models" used when --model isn't given
-    "lmstudio_url": "",      # e.g. http://192.168.1.20:1234 for LM Studio on another computer;
+    "server_url": "",        # e.g. http://192.168.1.20:1234 for LM Studio on another computer;
                              # empty: LM Studio on this computer, started and stopped as needed
-    "lmstudio_api_token": "",  # for a server with "Require Authentication" on; else $LM_API_TOKEN
+    "api_token": "",         # for a server with "Require Authentication" on; else $LM_API_TOKEN
 }
 KNOWN_SETTINGS = (*STRING_DEFAULTS, "models")
 SETTING_KINDS = {   # what each setting must be, for error messages
@@ -62,8 +62,8 @@ SETTING_KINDS = {   # what each setting must be, for error messages
     "prompts_folder": "a folder path, or empty",
     "report_format": "\"md\" or \"pdf\"",
     "default_model": "a model name from \"models\"",
-    "lmstudio_url": "an address such as \"http://192.168.1.20:1234\", or empty",
-    "lmstudio_api_token": "an LM Studio API token, or empty",
+    "server_url": "an address such as \"http://192.168.1.20:1234\", or empty",
+    "api_token": "an LM Studio API token, or empty",
 }
 MODEL_FIELDS = ("key", "ctx", "sampling", "notes")
 
@@ -101,8 +101,8 @@ class Settings:
     default_model: str = ""
     models: dict[str, ModelEntry] = field(default_factory=dict)
     source: Path | None = None   # the settings.json read, or None if there wasn't one
-    lmstudio_url: str = ""       # LM Studio elsewhere; empty for this computer
-    lmstudio_api_token: str = ""  # sent as "Authorization: Bearer ..." if set
+    server_url: str = ""         # LM Studio elsewhere; empty for this computer
+    api_token: str = ""          # sent as "Authorization: Bearer ..." if set
 
 
 @dataclass(frozen=True)
@@ -184,9 +184,9 @@ def load_settings(path: Path | None = None) -> Settings:
     report_format = values["report_format"].lower()
     if report_format not in REPORT_FORMATS:
         raise TranscriptReportError(f"Setting 'report_format' in {path.name} must be \"md\" or \"pdf\".")
-    url = values["lmstudio_url"]
+    url = values["server_url"]
     if url:
-        url = normalise_url(url, f"Setting 'lmstudio_url' in {path.name}")
+        url = normalise_url(url, f"Setting 'server_url' in {path.name}")
     root = path.parent
     return Settings(
         transcripts_dir=resolve_folder(values["transcripts_folder"], root),
@@ -197,8 +197,8 @@ def load_settings(path: Path | None = None) -> Settings:
         default_model=values["default_model"],
         models=models,
         source=path if exists else None,
-        lmstudio_url=url,
-        lmstudio_api_token=values["lmstudio_api_token"] or os.environ.get(TOKEN_ENV, "").strip(),
+        server_url=url,
+        api_token=values["api_token"] or os.environ.get(TOKEN_ENV, "").strip(),
     )
 
 
@@ -360,7 +360,9 @@ def notes_path_for(report: Path) -> Path:
 
 def find_resumable(transcript: Path, reports_dir: Path, fmt: str) -> Path | None:
     """The report path in the most recent report folder for this transcript that has saved
-    section notes (from a run that stopped part-way), or None."""
+    section notes and no finished report (a run that stopped part-way), or None. Notes are
+    kept after a run finishes, so a folder with a report in it must not be resumed: that
+    would write over the report."""
     stem = safe_name(transcript.stem)
     if not reports_dir.is_dir():
         return None
@@ -369,7 +371,8 @@ def find_resumable(transcript: Path, reports_dir: Path, fmt: str) -> Path | None
         if d.is_dir() and re.fullmatch(re.escape(stem) + r"(_\d+)?", d.name):
             report = d / f"{stem}_report.{fmt}"
             notes = notes_path_for(report)
-            if notes.is_file():
+            finished = any(report.with_suffix(f".{f}").exists() for f in REPORT_FORMATS)
+            if notes.is_file() and not finished:
                 candidates.append((notes.stat().st_mtime, report))
     return max(candidates)[1] if candidates else None
 

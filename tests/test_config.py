@@ -152,6 +152,14 @@ class Paths(TempDirTest):
                 os.utime(notes, (time.time() + i, time.time() + i))
         self.assertEqual(find_resumable(Path("v.txt"), reports, "pdf"), reports / "v_2" / "v_report.pdf")
 
+    def test_find_resumable_skips_finished_reports(self):
+        # Notes stay after a run finishes; resuming there would write over the report.
+        reports = self.dir / "reports"
+        (reports / "v").mkdir(parents=True)
+        notes_path_for(reports / "v" / "v_report.md").write_text("x", encoding="utf-8")
+        (reports / "v" / "v_report.pdf").write_bytes(b"%PDF")
+        self.assertIsNone(find_resumable(Path("v.txt"), reports, "md"))
+
 
 def with_model(entry: ModelEntry) -> Settings:
     """Settings from a settings.json whose default model "m" is `entry`."""
@@ -197,13 +205,13 @@ class Home(TempDirTest):
         self.assertEqual(s.report_format, "pdf")   # left as it was
 
 
-class LMStudioURL(TempDirTest):
+class ServerURL(TempDirTest):
     def test_setting(self):
         path = self.dir / "settings.json"
-        path.write_text('{"lmstudio_url": " http://192.168.1.20:1234/ "}', encoding="utf-8")
-        self.assertEqual(load_settings(path).lmstudio_url, "http://192.168.1.20:1234")
+        path.write_text('{"server_url": " http://192.168.1.20:1234/ "}', encoding="utf-8")
+        self.assertEqual(load_settings(path).server_url, "http://192.168.1.20:1234")
         for bad in ("192.168.1.20:1234", "http://", "ftp://x:1", "http://a b"):
-            path.write_text(json.dumps({"lmstudio_url": bad}), encoding="utf-8")
+            path.write_text(json.dumps({"server_url": bad}), encoding="utf-8")
             with self.subTest(url=bad), self.assertRaises(TranscriptReportError):
                 load_settings(path)
 
@@ -211,9 +219,9 @@ class LMStudioURL(TempDirTest):
         path = self.dir / "settings.json"
         path.write_text("{}", encoding="utf-8")
         with mock.patch.dict(os.environ, {"LM_API_TOKEN": "from-env"}):
-            self.assertEqual(load_settings(path).lmstudio_api_token, "from-env")
-            path.write_text('{"lmstudio_api_token": "from-file"}', encoding="utf-8")
-            self.assertEqual(load_settings(path).lmstudio_api_token, "from-file")
+            self.assertEqual(load_settings(path).api_token, "from-env")
+            path.write_text('{"api_token": "from-file"}', encoding="utf-8")
+            self.assertEqual(load_settings(path).api_token, "from-file")
 
 
 if __name__ == "__main__":

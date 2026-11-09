@@ -44,6 +44,12 @@ class Subtitles(unittest.TestCase):
                "3\n00:00:05,000 --> 00:00:07,000\nTom &amp; Jerry\n")
         self.assertEqual(parse_subtitles(srt), "Hello there\nTom & Jerry")
 
+    def test_spoken_numbers_and_cue_ids(self):
+        srt = "1\n00:00:01,000 --> 00:00:02,000\nThe answer is\n\n2\n00:00:02,000 --> 00:00:03,000\n42\n"
+        self.assertEqual(parse_subtitles(srt), "The answer is\n42")
+        vtt = "WEBVTT\n\nintro\n00:00:00.000 --> 00:00:01.000\nWelcome\n"
+        self.assertEqual(parse_subtitles(vtt), "Welcome")
+
     def test_youtube_auto_vtt_rolling_lines(self):
         vtt = ("WEBVTT\nKind: captions\nLanguage: en\n\n"
                "00:00:00.000 --> 00:00:02.000 align:start position:0%\n"

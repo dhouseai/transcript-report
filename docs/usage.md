@@ -79,7 +79,7 @@ The file name becomes the report name, so name it after the video.
 | `--single-max-words <n>` | Longer transcripts are split into sections (default 15000, about 100 minutes of speech) |
 | `--temperature <t>` | Sampling temperature (default: the model's `"sampling"`, else 0.4) |
 | `--port <n>` | Port for LM Studio's server on this computer, if it isn't running (default 1234) |
-| `--lmstudio-url <url>` | LM Studio on another computer, e.g. `http://192.168.1.20:1234` (default: `"lmstudio_url"`) |
+| `--server-url <url>` | LM Studio on another computer, e.g. `http://192.168.1.20:1234` (default: `"server_url"`) |
 | `--version` | Print the version |
 
 ## settings.json
@@ -95,8 +95,8 @@ are just notes.
 | `reports_folder` | Where reports go, one folder per video | `reports` |
 | `prompts_folder` | A folder with your own prompt files (see below) | empty: the built-in prompts |
 | `report_format` | `"md"` or `"pdf"`: what reports are saved as | `md` |
-| `lmstudio_url` | LM Studio on another computer (see below) | empty: this computer |
-| `lmstudio_api_token` | LM Studio API token, if its server requires one (see below) | empty: the `LM_API_TOKEN` environment variable, else none |
+| `server_url` | LM Studio on another computer (see below) | empty: this computer |
+| `api_token` | LM Studio API token, if its server requires one (see below) | empty: the `LM_API_TOKEN` environment variable, else none |
 | `default_model` | The model used when `--model` isn't given | |
 | `models` | The models you can pick, by name (below) | |
 
@@ -141,12 +141,12 @@ script on this one:
 
 1. On the other computer, open LM Studio's server settings (Developer tab), turn on
    **Serve on Local Network**, and start the server.
-2. Here, set `"lmstudio_url": "http://<that computer's address>:1234"` in settings.json,
-   or pass `--lmstudio-url`.
+2. Here, set `"server_url": "http://<that computer's address>:1234"` in settings.json,
+   or pass `--server-url`.
 3. Run `--check`: it should find the server and your model.
 
 If **Require Authentication** is turned on in that LM Studio's server settings, create an API
-token there and set `"lmstudio_api_token"` in settings.json (or the `LM_API_TOKEN` environment
+token there and set `"api_token"` in settings.json (or the `LM_API_TOKEN` environment
 variable). The token is kept in plain text in settings.json, so don't share that file.
 
 The server on the other computer isn't started or stopped for you, but the model is still

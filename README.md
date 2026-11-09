@@ -77,10 +77,10 @@ and reports folders are then kept in the project folder itself (`--init` creates
 `TRANSCRIPT_REPORT_HOME` environment variable to that folder.
 
 **LM Studio on another computer.** Turn on *Serve on Local Network* in LM Studio's server
-settings on that computer, then set `"lmstudio_url"` in `settings.json` (for example
-`"http://192.168.1.20:1234"`) or pass `--lmstudio-url`. The server there isn't started or
+settings on that computer, then set `"server_url"` in `settings.json` (for example
+`"http://192.168.1.20:1234"`) or pass `--server-url`. The server there isn't started or
 stopped for you, but the model is still loaded and unloaded. If that server requires an API token,
-set `"lmstudio_api_token"` too.
+set `"api_token"` too.
 
 ## Everyday use
 
@@ -152,7 +152,7 @@ flowchart LR
 ## Privacy
 
 Everything runs locally: the transcript, the model and the report stay on your machine. The
-script only talks to LM Studio, on `127.0.0.1` unless you set `lmstudio_url` to another
+script only talks to LM Studio, on `127.0.0.1` unless you set `server_url` to another
 computer. In that case the transcript is sent there over plain HTTP, so only do that on a
 network you trust.
 

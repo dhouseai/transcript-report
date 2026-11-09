@@ -21,13 +21,13 @@ class ParseArgs(unittest.TestCase):
         self.assertTrue(parse("--all").all)
         self.assertTrue(parse("--check").check)
         self.assertTrue(parse("--init").init)
-        self.assertEqual(parse("v.txt", "--lmstudio-url", "http://pc:1234/").lmstudio_url, "http://pc:1234")
+        self.assertEqual(parse("v.txt", "--server-url", "http://pc:1234/").server_url, "http://pc:1234")
 
     def test_invalid(self):
         for argv in ([], ["v.txt", "--all"], ["--all", "--title", "x"], ["v.txt", "--chunk-words", "5"],
                      ["v.txt", "--ctx", "0"], ["v.txt", "--out", "r.txt"], ["--all", "--out", "r.md"],
                      ["v.txt", "--pdf", "--md"], ["v.txt", "--temperature", "-1"],
-                     ["v.txt", "--lmstudio-url", "pc:1234"]):
+                     ["v.txt", "--server-url", "pc:1234"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
                 parse(*argv)
 

@@ -38,7 +38,7 @@ class Client(unittest.TestCase):
              self.assertRaises(APIError) as cm:
             LMStudio().call("GET", "/api/v1/models")
         self.assertEqual(cm.exception.status, 401)
-        self.assertIn("lmstudio_api_token", str(cm.exception))
+        self.assertIn("\"api_token\" in settings.json", str(cm.exception))
 
     def test_no_server(self):
         with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")), \
@@ -99,6 +99,7 @@ class EnsureServer(unittest.TestCase):
             lmstudio.ensure_server(LMStudio(remote_url="http://pc:1234"))
         self.assertIsNone(cm.exception.status)   # so a batch stops rather than skipping a video
         self.assertIn("Serve on Local Network", str(cm.exception))
+        self.assertIn("server_url / --server-url", str(cm.exception))
 
     def test_remote_server_is_only_checked(self):
         with mock.patch.object(lmstudio, "lms") as lms, \

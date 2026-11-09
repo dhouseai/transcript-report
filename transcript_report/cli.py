@@ -86,9 +86,9 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
     p.add_argument("--think", action="store_true", help="Let the model reason first (slower)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT,
                    help="Port for LM Studio's server on this computer, if it isn't already running")
-    p.add_argument("--lmstudio-url", metavar="URL",
+    p.add_argument("--server-url", metavar="URL",
                    help="LM Studio on another computer, e.g. http://192.168.1.20:1234 "
-                        "(default: \"lmstudio_url\" in settings.json, else this computer)")
+                        "(default: \"server_url\" in settings.json, else this computer)")
     p.add_argument("--out", type=Path, help="Report path or folder (default: <reports folder>/<video name>/"
                    "<video name>_report.md or .pdf). Ending it in .pdf or .md also picks the format")
     fmt = p.add_mutually_exclusive_group()
@@ -99,9 +99,9 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
-    if args.lmstudio_url:
+    if args.server_url:
         try:
-            args.lmstudio_url = normalise_url(args.lmstudio_url, "--lmstudio-url")
+            args.server_url = normalise_url(args.server_url, "--server-url")
         except TranscriptReportError as e:
             p.error(str(e))
     if args.check or args.init:
@@ -276,7 +276,7 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     if args.init:
         return run_init()
     if args.check:
-        return run_check(args.model, args.port, args.lmstudio_url)
+        return run_check(args.model, args.port, args.server_url)
 
     settings = load_settings()
     prompts = load_prompts(settings.prompts_dir)
@@ -291,8 +291,7 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     start = time.monotonic()
     failed: list[str] = []
     # On this computer, ensure_server may point the client at another port.
-    client = LMStudio(args.port, args.lmstudio_url or settings.lmstudio_url,
-                      settings.lmstudio_api_token)
+    client = LMStudio(args.port, args.server_url or settings.server_url, settings.api_token)
     with model_session(client, model, opts, args.ctx) as instance:
         chat_fn = partial(chat, client, instance, opts)
         for n, (transcript, text) in enumerate(jobs, 1):

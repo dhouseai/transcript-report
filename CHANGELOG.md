@@ -20,8 +20,8 @@ First public release.
   or `transcript-report`. `--init` creates settings.json and the folders in
   `~/transcript-report` (or `$TRANSCRIPT_REPORT_HOME`); running from a clone keeps them in
   the project folder.
-- `lmstudio_url` / `--lmstudio-url` for LM Studio on another computer.
-- `lmstudio_api_token` (or `LM_API_TOKEN`) for an LM Studio server that requires an API token.
+- `server_url` / `--server-url` for LM Studio on another computer.
+- `api_token` (or `LM_API_TOKEN`) for an LM Studio server that requires an API token.
 - Reports are never overwritten: a new folder or file name (`_2`, `_3`, ...) is used instead,
   unless you name the file yourself with `--out`.
 - The model is loaded and unloaded every run to free the VRAM, unless it was already loaded.
