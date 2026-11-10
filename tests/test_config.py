@@ -13,6 +13,7 @@ from transcript_report.config import (
     ModelEntry,
     Settings,
     app_home,
+    choose_runner,
     find_resumable,
     find_transcript,
     init_home,
@@ -67,10 +68,29 @@ class LoadSettings(TempDirTest):
                {"models": {"a": {"key": "k", "ctx": True}}}, {"models": {"a": {"key": "k", "ctx": -1}}},
                {"models": {"a": {"key": "k", "cxt": 5}}},
                {"models": {"a": {"key": "k", "sampling": {"temp": 1}}}},
-               {"models": {"a": {"key": "k", "sampling": {"top_p": "high"}}}}]
+               {"models": {"a": {"key": "k", "sampling": {"top_p": "high"}}}},
+               {"runner": ""}, {"runner": 1}, {"models": {"a": {"key": "k", "runner": ""}}},
+               {"models": {"a": {"key": "k", "runner": None}}}]
         for content in bad:
             with self.subTest(content=content), self.assertRaises(TranscriptReportError):
                 load_settings(self.write(content))
+
+    def test_runner_setting(self):
+        self.assertEqual(load_settings(self.dir / "nope.json").runner, "lmstudio")
+        self.assertEqual(load_settings(self.write({"runner": " Ollama "})).runner, "ollama")
+        with self.assertRaisesRegex(TranscriptReportError, "'runner' .* must be \"lmstudio\" or \"ollama\""):
+            load_settings(self.write({"runner": "vllm"}))
+
+    def test_model_runner(self):
+        s = load_settings(self.write({"models": {"a": {"key": "qwen3:14b", "runner": "OLLAMA"},
+                                                 "b": {"key": "qwen/qwen3-14b"}}}))
+        self.assertEqual((s.models["a"].runner, s.models["b"].runner), ("ollama", ""))
+        with self.assertRaisesRegex(TranscriptReportError, "Model 'a' .*\"runner\" must be \"lmstudio\" or"):
+            load_settings(self.write({"models": {"a": {"key": "k", "runner": "vllm"}}}))
+
+    def test_missing_key_names_both_runners(self):
+        with self.assertRaisesRegex(TranscriptReportError, "`lms ls` for LM Studio, `ollama list` for Ollama"):
+            load_settings(self.write({"models": {"a": {"ctx": 5}}}))
 
 
 class LoadPrompts(TempDirTest):
@@ -185,6 +205,29 @@ class ResolveModel(unittest.TestCase):
         with self.assertRaisesRegex(TranscriptReportError, "example"):
             resolve_model(None, with_model(ModelEntry("REPLACE-with-a-key-from-lms-ls")))
 
+    def test_listed_model_keeps_its_runner(self):
+        s = with_model(ModelEntry("qwen3:14b", runner="ollama"))
+        self.assertEqual(resolve_model(None, s).runner, "ollama")
+        self.assertEqual(resolve_model("other/key", s).runner, "")   # not listed: no runner of its own
+
+
+class ChooseRunner(unittest.TestCase):
+    """--runner > the model's "runner" > the "runner" setting."""
+
+    def test_precedence(self):
+        s = Settings(Path("t"), Path("d"), Path("r"), runner="ollama")
+        own = resolve_model("m", Settings(Path("t"), Path("d"), Path("r"),
+                                          models={"m": ModelEntry("k", runner="lmstudio")}))
+        plain = resolve_model("k", s)
+        for runner_arg, model, expected in ((None, None, "ollama"), (None, plain, "ollama"),
+                                            (None, own, "lmstudio"), ("ollama", own, "ollama"),
+                                            ("lmstudio", plain, "lmstudio")):
+            with self.subTest(runner_arg=runner_arg, model=model):
+                self.assertEqual(choose_runner(runner_arg, model, s), expected)
+
+    def test_default_is_lm_studio(self):
+        self.assertEqual(choose_runner(None, None, Settings(Path("t"), Path("d"), Path("r"))), "lmstudio")
+
 
 class Home(TempDirTest):
     def test_env_var_wins(self):
@@ -217,11 +260,12 @@ class ServerURL(TempDirTest):
             with self.subTest(url=bad), self.assertRaises(TranscriptReportError):
                 load_settings(path)
 
-    def test_api_token_falls_back_to_the_environment(self):
+    def test_api_token_is_only_the_setting(self):
+        # LM Studio's LM_API_TOKEN is read by its runner, so it never goes to Ollama.
         path = self.dir / "settings.json"
         path.write_text("{}", encoding="utf-8")
         with mock.patch.dict(os.environ, {"LM_API_TOKEN": "from-env"}):
-            self.assertEqual(load_settings(path).api_token, "from-env")
+            self.assertEqual(load_settings(path).api_token, "")
             path.write_text('{"api_token": "from-file"}', encoding="utf-8")
             self.assertEqual(load_settings(path).api_token, "from-file")
 

@@ -23,8 +23,10 @@ PROMPTS_DIR = PACKAGE_DIR / "prompts"                         # the built-in pro
 EXAMPLE_SETTINGS_FILE = PACKAGE_DIR / "settings.example.json"
 SETTINGS_NAME = "settings.json"
 HOME_ENV = "TRANSCRIPT_REPORT_HOME"
-TOKEN_ENV = "LM_API_TOKEN"   # LM Studio API token, when settings.json has no "api_token"
-DEFAULT_PORT = 1234
+RUNNERS = ("lmstudio", "ollama")   # the programs that can run the model (see runner.make_runner)
+RUNNER_CHOICES = " or ".join(f"\"{r}\"" for r in RUNNERS)
+# Said where a model key is asked for before it's known which runner it's for.
+KEY_HINT = "run `lms ls` for LM Studio, `ollama list` for Ollama"
 
 DEFAULT_CTX = 32768       # context size when settings.json doesn't give one
 REPORT_TOKENS = 6000      # room reserved for the final report
@@ -52,9 +54,10 @@ STRING_DEFAULTS = {
     "prompts_folder": "",    # your own prompt files; empty, or any file missing there: the built-in ones
     "report_format": "md",   # "md" or "pdf": what the report is saved as when --pdf/--md isn't given
     "default_model": "",     # name from "models" used when --model isn't given
-    "server_url": "",        # e.g. http://192.168.1.20:1234 for LM Studio on another computer;
-                             # empty: LM Studio on this computer, started and stopped as needed
-    "api_token": "",         # for a server with "Require Authentication" on; else $LM_API_TOKEN
+    "runner": "lmstudio",    # "lmstudio" or "ollama": runs the models that don't set their own "runner"
+    "server_url": "",        # e.g. http://192.168.1.20:1234 for the runner on another computer;
+                             # empty: the runner on this computer, started and stopped as needed
+    "api_token": "",         # for a server that asks for one; empty: none, or $LM_API_TOKEN for LM Studio
 }
 KNOWN_SETTINGS = (*STRING_DEFAULTS, "models")
 SETTING_KINDS = {   # what each setting must be, for error messages
@@ -62,10 +65,11 @@ SETTING_KINDS = {   # what each setting must be, for error messages
     "prompts_folder": "a folder path, or empty",
     "report_format": "\"md\" or \"pdf\"",
     "default_model": "a model name from \"models\"",
+    "runner": RUNNER_CHOICES,
     "server_url": "an address such as \"http://192.168.1.20:1234\", or empty",
-    "api_token": "an LM Studio API token, or empty",
+    "api_token": "an API token, or empty",
 }
-MODEL_FIELDS = ("key", "ctx", "sampling", "notes")
+MODEL_FIELDS = ("key", "ctx", "runner", "sampling", "notes")
 
 REPORT_PROMPT_FILE = "report_prompt.md"
 NOTES_PROMPT_FILE = "section_notes_prompt.md"
@@ -77,18 +81,20 @@ NOTES_HEADINGS_USED = ("### Style evidence", "### Padding")
 
 @dataclass(frozen=True)
 class ModelEntry:
-    key: str                  # LM Studio model key (see `lms ls`)
+    key: str                  # the model's key in its runner (`lms ls`, `ollama list`)
     ctx: int = DEFAULT_CTX    # context size to load it with
     sampling: dict[str, float] = field(default_factory=dict)   # overrides SAMPLING_DEFAULTS
+    runner: str = ""          # one of RUNNERS; empty: the "runner" setting
 
 
 @dataclass(frozen=True)
 class ModelChoice:
     name: str                 # what the user called it
-    key: str                  # LM Studio model key
+    key: str                  # the model's key in its runner
     ctx: int                  # context size from settings.json (or DEFAULT_CTX)
     listed: bool              # found in "models" in settings.json
     sampling: dict[str, float] = field(default_factory=dict)
+    runner: str = ""          # the model's "runner" in settings.json, or empty
 
 
 @dataclass(frozen=True)
@@ -101,8 +107,9 @@ class Settings:
     default_model: str = ""
     models: dict[str, ModelEntry] = field(default_factory=dict)
     source: Path | None = None   # the settings.json read, or None if there wasn't one
-    server_url: str = ""         # LM Studio elsewhere; empty for this computer
-    api_token: str = ""          # sent as "Authorization: Bearer ..." if set
+    runner: str = "lmstudio"     # for models without their own "runner"
+    server_url: str = ""         # the runner elsewhere; empty for this computer
+    api_token: str = ""          # sent as "Authorization: Bearer ..." if set; only what settings.json says
 
 
 @dataclass(frozen=True)
@@ -143,7 +150,7 @@ def settings_file() -> Path:
 
 
 def normalise_url(url: str, where: str) -> str:
-    """An LM Studio server address, checked and without a trailing slash."""
+    """A runner's server address, checked and without a trailing slash."""
     url = url.strip().rstrip("/")
     if not re.fullmatch(r"https?://[^\s/]+", url):
         raise TranscriptReportError(f"{where} must look like http://<computer>:<port>, e.g. "
@@ -184,6 +191,9 @@ def load_settings(path: Path | None = None) -> Settings:
     report_format = values["report_format"].lower()
     if report_format not in REPORT_FORMATS:
         raise TranscriptReportError(f"Setting 'report_format' in {path.name} must be \"md\" or \"pdf\".")
+    runner = values["runner"].lower()
+    if runner not in RUNNERS:
+        raise TranscriptReportError(f"Setting 'runner' in {path.name} must be {RUNNER_CHOICES}.")
     url = values["server_url"]
     if url:
         url = normalise_url(url, f"Setting 'server_url' in {path.name}")
@@ -197,8 +207,11 @@ def load_settings(path: Path | None = None) -> Settings:
         default_model=values["default_model"],
         models=models,
         source=path if exists else None,
+        runner=runner,
         server_url=url,
-        api_token=values["api_token"] or os.environ.get(TOKEN_ENV, "").strip(),
+        # Each runner reads its own env var for a token (LM Studio's is LM_API_TOKEN), so one
+        # runner's token is never sent to another's server.
+        api_token=values["api_token"],
     )
 
 
@@ -225,8 +238,8 @@ def parse_models(models: object, file_name: str) -> dict[str, ModelEntry]:
     parsed = {}
     for name, m in models.items():
         if not isinstance(m, dict) or not isinstance(m.get("key"), str) or not m["key"].strip():
-            raise TranscriptReportError(f"Model '{name}' in {where} needs a \"key\": its LM Studio model key "
-                                        f"(run `lms ls` to see them).")
+            raise TranscriptReportError(f"Model '{name}' in {where} needs a \"key\": the model's key in its "
+                                        f"runner ({KEY_HINT}).")
         unknown = [k for k in m if k not in MODEL_FIELDS and not k.startswith("_")]
         if unknown:
             raise TranscriptReportError(f"Model '{name}' in {where}: unknown field '{unknown[0]}'. "
@@ -234,8 +247,12 @@ def parse_models(models: object, file_name: str) -> dict[str, ModelEntry]:
         ctx = m.get("ctx", DEFAULT_CTX)
         if not isinstance(ctx, int) or isinstance(ctx, bool) or ctx <= 0:
             raise TranscriptReportError(f"Model '{name}' in {where}: \"ctx\" must be a whole number of tokens.")
+        runner = m.get("runner", "")
+        if "runner" in m and not (isinstance(runner, str) and runner.strip().lower() in RUNNERS):
+            raise TranscriptReportError(f"Model '{name}' in {where}: \"runner\" must be {RUNNER_CHOICES}.")
         parsed[name] = ModelEntry(key=m["key"].strip(), ctx=ctx,
-                                  sampling=parse_sampling(m.get("sampling", {}), f"Model '{name}' in {where}"))
+                                  sampling=parse_sampling(m.get("sampling", {}), f"Model '{name}' in {where}"),
+                                  runner=runner.strip().lower())
     return parsed
 
 
@@ -379,18 +396,24 @@ def find_resumable(transcript: Path, reports_dir: Path, fmt: str) -> Path | None
 
 def resolve_model(model_arg: str | None, settings: Settings) -> ModelChoice:
     """--model (or "default_model") as a name from "models" in settings.json, or else taken
-    as an LM Studio model key (main() checks that LM Studio knows it once the server is up)."""
+    as a model key (model_session() checks that the runner has it once the server is up)."""
     name = model_arg or settings.default_model
     if not name:
         if settings.source is None:
             raise TranscriptReportError(f"No {SETTINGS_NAME} yet (looked in {app_home()}). Run with --init to "
-                                        f"create one, then add your model to it. Or pass --model <LM Studio key>.")
+                                        f"create one, then add your model to it. Or pass --model <model key>.")
         raise TranscriptReportError(f"No model chosen. Set \"default_model\" in {settings.source} to a name "
                                     f"from \"models\", or pass --model.")
     if name in settings.models:
         m = settings.models[name]
         if m.key.startswith("REPLACE-"):
             raise TranscriptReportError(f"Model '{name}' in {settings.source or SETTINGS_NAME} still has the example "
-                                        f"\"key\". Replace it with your model's LM Studio key (run `lms ls`).")
-        return ModelChoice(name, m.key, m.ctx, True, m.sampling)
+                                        f"\"key\". Replace it with your model's key ({KEY_HINT}).")
+        return ModelChoice(name, m.key, m.ctx, True, m.sampling, m.runner)
     return ModelChoice(name, name, DEFAULT_CTX, False)
+
+
+def choose_runner(runner_arg: str | None, model: ModelChoice | None, settings: Settings) -> str:
+    """Which runner to use: --runner, else the model's "runner" in settings.json, else the
+    "runner" setting."""
+    return runner_arg or (model.runner if model else "") or settings.runner

@@ -5,19 +5,22 @@ signed, so Windows Smart App Control lets them run.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from .config import DEFAULT_PORT, TOKEN_ENV, RunOptions
+from .config import RunOptions
 from .errors import TranscriptReportError
 from .helpers import NO_WINDOW, finish_progress, progress, say, warn
 from .http_client import APIError, JSONClient
 from .model_call import chat
 from .runner import LoadedModel
 
+LMSTUDIO_PORT = 1234
+TOKEN_ENV = "LM_API_TOKEN"   # LM Studio's API token, when settings.json has no "api_token"
 LMS_EXE = Path.home() / ".lmstudio" / "bin" / ("lms.exe" if sys.platform == "win32" else "lms")
 AUTH_HINT = ("The server requires an API token: create one in LM Studio's server settings and set "
              f"\"api_token\" in settings.json (or the {TOKEN_ENV} environment variable).")
@@ -27,7 +30,7 @@ class LMStudio(JSONClient):
     """A small client for LM Studio's REST API: on this computer (127.0.0.1:<port>, with the
     server started and stopped through the `lms` command as needed), or at `remote_url`."""
 
-    def __init__(self, port: int = DEFAULT_PORT, remote_url: str = "", api_token: str = ""):
+    def __init__(self, port: int = LMSTUDIO_PORT, remote_url: str = "", api_token: str = ""):
         # api_token: for a server with "Require Authentication" turned on
         super().__init__(remote_url, api_token, "LM Studio", AUTH_HINT)
         self.port = port
@@ -49,7 +52,8 @@ class LMStudioRunner:
     cli = "LM Studio's lms command"
 
     def __init__(self, port: int | None = None, url: str = "", token: str = ""):
-        self.client = LMStudio(DEFAULT_PORT if port is None else port, url, token)
+        token = token or os.environ.get(TOKEN_ENV, "").strip()
+        self.client = LMStudio(LMSTUDIO_PORT if port is None else port, url, token)
 
     @property
     def on_this_computer(self) -> bool:
@@ -70,6 +74,9 @@ class LMStudioRunner:
 
     def model_keys(self) -> list[str]:
         return model_keys(self.client)
+
+    def has_model(self, key: str) -> bool:
+        return key in model_keys(self.client)
 
     def loaded(self, key: str) -> LoadedModel | None:
         return loaded_model(self.client, key)

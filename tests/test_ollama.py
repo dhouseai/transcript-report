@@ -83,6 +83,10 @@ class Client(unittest.TestCase):
         self.assertNotIn("Authorization", Ollama().request("GET", "/x").headers)
         self.assertEqual(Ollama(api_token="abc").request("GET", "/x").get_header("Authorization"), "Bearer abc")
 
+    def test_lm_studios_token_is_not_sent(self):
+        with mock.patch.dict("os.environ", {"LM_API_TOKEN": "lm-studio-token"}):
+            self.assertNotIn("Authorization", OllamaRunner().client.request("GET", "/x").headers)
+
     def test_error_names_ollama_and_gives_its_message(self):
         _, urlopen = serve({"POST /api/generate": http_error(404, 'model "nope" not found')})
         with urlopen, self.assertRaises(APIError) as cm:
@@ -99,6 +103,12 @@ class Runner(unittest.TestCase):
         self.assertEqual(runner.url, "http://127.0.0.1:11434")
         self.assertEqual(make_runner("ollama", 5000, "", "").url, "http://127.0.0.1:5000")
         self.assertFalse(make_runner("ollama", None, "http://pc:11434", "").on_this_computer)
+
+    def test_version(self):
+        _, urlopen = serve({"GET /api/version": [{"version": "0.12.0"}, {}]})
+        with urlopen:
+            self.assertEqual(OllamaRunner().version(), "0.12.0")
+            self.assertEqual(OllamaRunner().version(), "unknown")
 
 
 class StartStop(unittest.TestCase):
@@ -193,11 +203,20 @@ class Models(unittest.TestCase):
             with self.subTest(a=a, b=b):
                 self.assertEqual(ollama.same_model(a, b), same)
 
-    def test_keys_include_bare_names_of_latest(self):
-        tags = {"models": [{"name": "qwen3:latest"}, {"name": "llama3.2:3b"}, {"no name": True}]}
+    def test_keys_are_listed_as_ollama_names_them(self):
+        tags = {"models": [{"name": "qwen3:latest"}, {"model": "llama3.2:3b"}, {"no name": True}]}
         _, urlopen = serve({"GET /api/tags": tags})
         with urlopen:
-            self.assertEqual(OllamaRunner().model_keys(), ["qwen3:latest", "qwen3", "llama3.2:3b"])
+            self.assertEqual(OllamaRunner().model_keys(), ["qwen3:latest", "llama3.2:3b"])
+
+    def test_has_model_accepts_a_bare_name_for_latest(self):
+        _, urlopen = serve({"GET /api/tags": {"models": [{"name": "qwen3:latest"}, {"name": "llama3.2:3b"}]}})
+        with urlopen:
+            runner = OllamaRunner()
+            for key, found in (("qwen3", True), ("qwen3:latest", True), ("llama3.2:3b", True),
+                               ("llama3.2", False), ("qwen3:8b", False)):
+                with self.subTest(key=key):
+                    self.assertEqual(runner.has_model(key), found)
 
     def test_loaded_copy_from_ps(self):
         _, urlopen = serve({"GET /api/ps": PS})

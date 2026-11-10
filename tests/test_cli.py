@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from transcript_report import __version__, cli
-from transcript_report.config import Settings
+from transcript_report.config import ModelEntry, Settings
 from transcript_report.runner import LoadedModel
 
 
@@ -37,6 +37,9 @@ class FakeRunner:
     def model_keys(self):
         return self.keys
 
+    def has_model(self, key):
+        return key in self.keys
+
     def loaded(self, key):
         return self.loaded_copy
 
@@ -66,12 +69,18 @@ class ParseArgs(unittest.TestCase):
         self.assertTrue(parse("--check").check)
         self.assertTrue(parse("--init").init)
         self.assertEqual(parse("v.txt", "--server-url", "http://pc:1234/").server_url, "http://pc:1234")
+        self.assertEqual(parse("v.txt", "--runner", "ollama").runner, "ollama")
+
+    def test_runner_and_port_are_left_to_the_settings_and_the_runner(self):
+        args = parse("v.txt")
+        self.assertIsNone(args.runner)
+        self.assertIsNone(args.port)   # each runner has its own default port
 
     def test_invalid(self):
         for argv in ([], ["v.txt", "--all"], ["--all", "--title", "x"], ["v.txt", "--chunk-words", "5"],
                      ["v.txt", "--ctx", "0"], ["v.txt", "--out", "r.txt"], ["--all", "--out", "r.md"],
                      ["v.txt", "--pdf", "--md"], ["v.txt", "--temperature", "-1"],
-                     ["v.txt", "--server-url", "pc:1234"]):
+                     ["v.txt", "--server-url", "pc:1234"], ["v.txt", "--runner", "vllm"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
                 parse(*argv)
 
@@ -132,6 +141,47 @@ class Batch(unittest.TestCase):
             self.assertTrue((s.reports_dir / "a" / "a_report.md").is_file())
             self.assertTrue((s.done_dir / "a.txt").is_file())
             self.assertTrue((s.transcripts_dir / "b.txt").is_file())   # failed: left to retry
+
+
+class RunnerChoice(unittest.TestCase):
+    """run(), --check and --init build the runner picked by --runner, the model or the setting."""
+
+    def runner_built(self, *argv, runner="lmstudio"):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            s = Settings(d / "in", d / "done", d / "reports", source=d / "settings.json", runner=runner,
+                         models={"ol": ModelEntry("qwen3:14b", runner="ollama"), "lm": ModelEntry("pub/m")})
+            s.transcripts_dir.mkdir()
+            (s.transcripts_dir / "v.txt").write_text("A video.", encoding="utf-8")
+            with mock.patch.object(cli, "load_settings", return_value=s), \
+                 mock.patch.object(cli, "make_runner", return_value=FakeRunner()) as make, \
+                 contextlib.redirect_stderr(io.StringIO()):
+                cli.run(["v.txt", *argv])
+        return make.call_args.args
+
+    def test_precedence(self):
+        self.assertEqual(self.runner_built("--model", "lm")[0], "lmstudio")
+        self.assertEqual(self.runner_built("--model", "lm", runner="ollama")[0], "ollama")
+        self.assertEqual(self.runner_built("--model", "ol")[0], "ollama")
+        self.assertEqual(self.runner_built("--model", "ol", "--runner", "lmstudio")[0], "lmstudio")
+
+    def test_port_is_left_to_the_runner_unless_given(self):
+        self.assertIsNone(self.runner_built("--model", "ol")[1])
+        self.assertEqual(self.runner_built("--model", "ol", "--port", "5000")[1], 5000)
+
+    def test_check_gets_the_runner_and_port(self):
+        with mock.patch.object(cli, "run_check", return_value=0) as check:
+            cli.run(["--check", "--runner", "ollama"])
+        check.assert_called_once_with(None, "ollama", None, None)
+
+    def test_init_names_the_runners_list_command(self):
+        s = Settings(Path("t"), Path("d"), Path("r"))
+        for argv, hint in (([], "`lms ls`"), (["--runner", "ollama"], "`ollama list`")):
+            with self.subTest(argv=argv), \
+                 mock.patch.object(cli, "init_home", return_value=(Path("settings.json"), True, s)), \
+                 contextlib.redirect_stdout(io.StringIO()) as out:
+                cli.run(["--init", *argv])
+            self.assertIn(f"\"key\" (run {hint} to see them)", out.getvalue())
 
 
 class SaveReport(unittest.TestCase):

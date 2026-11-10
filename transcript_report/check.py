@@ -1,4 +1,4 @@
-"""--check: test the setup (settings, prompts, LM Studio, the model, a browser, the GPU)
+"""--check: test the setup (settings, prompts, the runner, the model, a browser, the GPU)
 without running an analysis, and say what to fix."""
 # ruff: noqa: T201  (the check results are this module's output, printed to stdout)
 
@@ -7,16 +7,25 @@ import sys
 from collections.abc import Callable
 
 from . import __version__
-from .config import ModelChoice, app_home, list_transcripts, load_prompts, load_settings, resolve_model
+from .config import (
+    ModelChoice,
+    app_home,
+    choose_runner,
+    list_transcripts,
+    load_prompts,
+    load_settings,
+    resolve_model,
+)
 from .errors import TranscriptReportError
 from .helpers import vram_info
+from .ollama import OllamaRunner
 from .pdf import find_browser
 from .runner import Runner, make_runner
 
 OK, WARN, FAIL = "  ok  ", " warn ", " FAIL "
 
 
-def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
+def run_check(model_arg: str | None, runner_arg: str | None, port: int | None, url_arg: str | None) -> int:
     """Print one line per check. Returns 1 if anything failed, else 0."""
     failed = False
 
@@ -57,7 +66,8 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
         line(FAIL, "model setting", str(e))
         model = None
 
-    runner = make_runner("lmstudio", port, url_arg or settings.server_url, settings.api_token)
+    runner = make_runner(choose_runner(runner_arg, model, settings), port, url_arg or settings.server_url,
+                         settings.api_token)
     check_server(runner, model, line)
 
     browser = find_browser()
@@ -80,8 +90,8 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
 
 
 def check_server(runner: Runner, model: ModelChoice | None, line: Callable[[str, str, str], None]) -> None:
-    """The runner's command-line program (on this computer), the server, and whether the model is downloaded.
-    A server started for the check is stopped again."""
+    """The runner's command-line program (on this computer), the server (and Ollama's version), and
+    whether the model is downloaded. A server started for the check is stopped again."""
     if runner.on_this_computer:
         try:
             line(OK, runner.cli, runner.find_cli())
@@ -94,12 +104,13 @@ def check_server(runner: Runner, model: ModelChoice | None, line: Callable[[str,
         where = "on another computer" if not runner.on_this_computer else (
             "started for this check" if started else "already running")
         line(OK, f"{runner.name} server", f"{runner.url} ({where})")
-        keys = runner.model_keys()
-        if model and model.key in keys:
+        if isinstance(runner, OllamaRunner):
+            line(OK, "Ollama version", runner.version())
+        if model and runner.has_model(model.key):
             line(OK, "model downloaded", model.key)
         elif model:
             line(FAIL, "model downloaded", f"{runner.name} has no model with the key {model.key}. "
-                                           f"Downloaded: {', '.join(keys) or 'none'}")
+                                           f"Downloaded: {', '.join(runner.model_keys()) or 'none'}")
     except TranscriptReportError as e:
         line(FAIL, f"{runner.name} server", str(e))
     finally:

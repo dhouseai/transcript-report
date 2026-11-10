@@ -66,6 +66,11 @@ class Runner(unittest.TestCase):
         with self.assertRaisesRegex(TranscriptReportError, "Unknown runner 'other'"):
             make_runner("other", None, "", "")
 
+    def test_token_falls_back_to_the_environment(self):
+        with mock.patch.dict("os.environ", {"LM_API_TOKEN": " from-env "}):
+            self.assertEqual(LMStudioRunner().client.api_token, "from-env")
+            self.assertEqual(LMStudioRunner(token="from-file").client.api_token, "from-file")
+
     def test_load_reports_the_context_it_asked_for(self):
         runner = LMStudioRunner(1234)
         with mock.patch.object(lmstudio, "load_model", return_value="pub/m:2") as load:

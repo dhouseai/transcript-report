@@ -130,8 +130,15 @@ class OllamaRunner:
     def find_cli(self) -> str:
         return str(find_ollama())
 
+    def version(self) -> str:
+        """The server's version, for --check's Ollama line (so not part of Runner)."""
+        return str(self.client.call("GET", "/api/version").get("version") or "unknown")
+
     def model_keys(self) -> list[str]:
         return model_keys(self.client)
+
+    def has_model(self, key: str) -> bool:
+        return any(same_model(name, key) for name in model_keys(self.client))
 
     def loaded(self, key: str) -> LoadedModel | None:
         entry = find_loaded(self.client, key)
@@ -187,16 +194,9 @@ def same_model(a: str, b: str) -> bool:
 
 
 def model_keys(client: Ollama) -> list[str]:
-    """Names of all the models Ollama has downloaded. A `:latest` one is listed with and without
-    its tag, so either form is found."""
-    keys = []
-    for m in client.call("GET", "/api/tags").get("models", []):
-        name = m.get("name") or m.get("model")
-        if name:
-            keys.append(name)
-            if name.endswith(":latest"):
-                keys.append(name.removesuffix(":latest"))
-    return keys
+    """Names of all the models Ollama has downloaded, as it lists them (with their tags)."""
+    names = (m.get("name") or m.get("model") for m in client.call("GET", "/api/tags").get("models", []))
+    return [name for name in names if name]
 
 
 def find_loaded(client: Ollama, key: str) -> dict | None:

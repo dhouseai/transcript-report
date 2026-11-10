@@ -3,10 +3,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from .config import RunOptions
+from .config import RUNNERS, RunOptions
 from .errors import TranscriptReportError
-
-RUNNERS = ("lmstudio", "ollama")
 
 
 @dataclass(frozen=True)
@@ -42,6 +40,10 @@ class Runner(Protocol):
         ...
 
     def model_keys(self) -> list[str]: ...
+
+    def has_model(self, key: str) -> bool:
+        """Whether the model is downloaded, by the runner's own rules for names."""
+        ...
 
     def loaded(self, key: str) -> LoadedModel | None:
         """An already-loaded copy of the model, or None."""

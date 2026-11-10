@@ -16,15 +16,16 @@ from pathlib import Path
 from . import __version__
 from .check import run_check
 from .config import (
-    DEFAULT_PORT,
     HOME_ENV,
     REPORT_FORMATS,
+    RUNNERS,
     SAMPLING_DEFAULTS,
     ModelChoice,
     Prompts,
     RunOptions,
     Settings,
     app_home,
+    choose_runner,
     find_resumable,
     find_transcript,
     init_home,
@@ -61,11 +62,15 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
     p.add_argument("--init", action="store_true",
                    help="Create settings.json and the transcripts and reports folders, then exit")
     p.add_argument("--check", action="store_true",
-                   help="Test the setup (settings, LM Studio, the model, PDF browser) and exit")
+                   help="Test the setup (settings, the runner, the model, PDF browser) and exit")
     p.add_argument("--resume", action="store_true",
                    help="Continue a long video's stopped run from its saved section notes")
     p.add_argument("--title", default="", help="Video title / channel, gives the model context")
-    p.add_argument("--model", help="Name from \"models\" in settings.json, or an LM Studio model key (see `lms ls`)")
+    p.add_argument("--model", help="Name from \"models\" in settings.json, or the runner's model key "
+                                   "(see `lms ls` or `ollama list`)")
+    p.add_argument("--runner", choices=RUNNERS,
+                   help="The program that runs the model (default: the model's \"runner\" in settings.json, "
+                        "else the \"runner\" setting, else lmstudio)")
     p.add_argument("--ctx", type=int, help="Context window (default: the model's \"ctx\" in settings.json)")
     p.add_argument("--chunk-words", type=int, default=10000, help="Words per section for long videos")
     p.add_argument("--single-max-words", type=int, default=15000,
@@ -74,10 +79,11 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
                    help="Sampling temperature (default: the model's \"sampling\" in settings.json, "
                         f"else {SAMPLING_DEFAULTS['temperature']})")
     p.add_argument("--think", action="store_true", help="Let the model reason first (slower)")
-    p.add_argument("--port", type=int, default=DEFAULT_PORT,
-                   help="Port for LM Studio's server on this computer, if it isn't already running")
+    p.add_argument("--port", type=int,
+                   help="Port for the runner's server on this computer (default: 1234 for LM Studio, "
+                        "11434 for Ollama)")
     p.add_argument("--server-url", metavar="URL",
-                   help="LM Studio on another computer, e.g. http://192.168.1.20:1234 "
+                   help="The runner on another computer, e.g. http://192.168.1.20:1234 "
                         "(default: \"server_url\" in settings.json, else this computer)")
     p.add_argument("--out", type=Path, help="Report path or folder (default: <reports folder>/<video name>/"
                    "<video name>_report.md or .pdf). Ending it in .pdf or .md also picks the format")
@@ -181,10 +187,10 @@ def model_session(runner: Runner, model: ModelChoice, opts: RunOptions,
     model_id = ""
     try:
         started_server = runner.start()
-        if not model.listed and model.key not in (keys := runner.model_keys()):
+        if not model.listed and not runner.has_model(model.key):
             raise TranscriptReportError(
                 f"'{model.name}' isn't in \"models\" in settings.json or an {runner.name} model key "
-                f"(downloaded: {', '.join(keys) or 'none'}).")
+                f"(downloaded: {', '.join(runner.model_keys()) or 'none'}).")
         existing = runner.loaded(model.key)
         if existing:
             model_id = existing.id
@@ -232,10 +238,11 @@ def analyse_transcript(transcript: Path, text: str, args: argparse.Namespace, se
             say(f"Transcript moved to {moved}")
 
 
-def run_init() -> int:
+def run_init(runner_arg: str | None) -> int:
     path, created, settings = init_home()
     if created:
-        print(f"Created {path}\nOpen it and set your model's \"key\" (run `lms ls` to see them) "
+        runner = make_runner(choose_runner(runner_arg, None, settings), None, "", "")
+        print(f"Created {path}\nOpen it and set your model's \"key\" ({runner.list_hint} to see them) "
               f"and \"ctx\", then run with --check.")
     else:
         print(f"{path} already exists, so it was left as it is.")
@@ -266,9 +273,9 @@ def read_jobs(args: argparse.Namespace, settings: Settings) -> list[tuple[Path, 
 def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     args = parse_args(argv, prog)
     if args.init:
-        return run_init()
+        return run_init(args.runner)
     if args.check:
-        return run_check(args.model, args.port, args.server_url)
+        return run_check(args.model, args.runner, args.port, args.server_url)
 
     settings = load_settings()
     prompts = load_prompts(settings.prompts_dir)
@@ -283,7 +290,8 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     start = time.monotonic()
     failed: list[str] = []
     # On this computer, starting the server may point the runner at another port.
-    runner = make_runner("lmstudio", args.port, args.server_url or settings.server_url, settings.api_token)
+    runner = make_runner(choose_runner(args.runner, model, settings), args.port,
+                         args.server_url or settings.server_url, settings.api_token)
     with model_session(runner, model, opts, args.ctx) as model_id:
         chat_fn = partial(runner.chat, model_id, opts)
         for n, (transcript, text) in enumerate(jobs, 1):
