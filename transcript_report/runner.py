@@ -1,4 +1,4 @@
-"""The interface the command line uses for the program that runs the model (LM Studio)."""
+"""The interface the command line uses for the program that runs the model (LM Studio, Ollama)."""
 
 from dataclasses import dataclass
 from typing import Protocol
@@ -6,12 +6,12 @@ from typing import Protocol
 from .config import RunOptions
 from .errors import TranscriptReportError
 
-RUNNERS = ("lmstudio",)
+RUNNERS = ("lmstudio", "ollama")
 
 
 @dataclass(frozen=True)
 class LoadedModel:
-    id: str             # sent with each request and to unload it; LM Studio: the instance id
+    id: str             # sent with each request and to unload it; LM Studio: the instance id, Ollama: the model name
     ctx: int            # 0 if the runner didn't say
     parallel: int       # 0 if the runner didn't say
     size: int = 0       # bytes; 0 if the runner didn't say
@@ -19,7 +19,7 @@ class LoadedModel:
 
 
 class Runner(Protocol):
-    name: str        # "LM Studio", used in messages
+    name: str        # "LM Studio" / "Ollama", used in messages
     list_hint: str   # how to see the downloaded models' keys, e.g. "run `lms ls`"
     cli: str         # the command-line program --check looks for, e.g. "LM Studio's lms command"
 
@@ -65,7 +65,10 @@ def make_runner(kind: str, port: int | None, url: str, token: str) -> Runner:
     """The runner for `kind`: on this computer (on `port`, or its usual one), or at `url`."""
     # Imported here because the runners import LoadedModel from this module.
     from .lmstudio import LMStudioRunner
+    from .ollama import OllamaRunner
 
     if kind == "lmstudio":
         return LMStudioRunner(port, url, token)
+    if kind == "ollama":
+        return OllamaRunner(port, url, token)
     raise TranscriptReportError(f"Unknown runner '{kind}'. Known: {', '.join(RUNNERS)}")
