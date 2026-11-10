@@ -62,7 +62,11 @@ def run_check(model_arg: str | None, runner_arg: str | None, port: int | None, u
 
     try:
         model = resolve_model(model_arg, settings)
-        line(OK, "model setting", f"{model.name} -> {model.key}, context {model.ctx:,}")
+        if model.listed:
+            line(OK, "model setting", f"{model.name} -> {model.key}, context {model.ctx:,}")
+        else:
+            line(OK, "model setting", f"{model.name} isn't in \"models\" in settings.json, so it's taken as a "
+                                      f"model key, with context {model.ctx:,}")
     except TranscriptReportError as e:
         line(FAIL, "model setting", str(e))
         model = None

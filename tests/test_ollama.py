@@ -426,6 +426,19 @@ class Chat(unittest.TestCase):
         self.assertEqual(out, "Hi")
         self.assertIn("nearly filled the context window", err)
 
+    def test_input_too_long_for_the_context(self):
+        # Ollama's real reply in the step 7 run: llama.cpp's error, as a JSON string in its own "error".
+        llama_error = json.dumps({"error": {
+            "code": 400, "type": "exceed_context_size_error", "n_prompt_tokens": 29442, "n_ctx": 16384,
+            "message": "request (29442 tokens) exceeds the available context size (16384 tokens), try increasing it"}})
+        with self.assertRaises(TranscriptReportError) as cm:
+            self.send(http_error(400, llama_error))
+        self.assertNotIsInstance(cm.exception, APIError)   # so --all skips just this video
+        self.assertEqual(str(cm.exception).splitlines(), [
+            "Input is too long for the 8,192-token context. Raise --ctx, or lower --chunk-words or --single-max-words.",
+            "Ollama error 400 on /api/chat: request (29442 tokens) exceeds the available context size "
+            "(16384 tokens), try increasing it"])
+
     def test_model_that_cant_think(self):
         with self.assertRaises(TranscriptReportError) as cm:
             self.send(http_error(400, '"gemma3:latest" does not support thinking'), think=True)

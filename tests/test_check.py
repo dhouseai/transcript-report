@@ -14,7 +14,8 @@ def settings(model: ModelEntry | None = None, runner: str = "lmstudio") -> Setti
                     source=Path("settings.json"), runner=runner)
 
 
-def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe"), url_arg: str | None = None):
+def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe"), url_arg: str | None = None,
+              model_arg: str | None = None):
     """run_check() with LM Studio, the browser and the GPU faked."""
     with mock.patch.object(check, "load_settings", return_value=settings()), \
          mock.patch.object(lmstudio, "find_lms", return_value=Path("lms")), \
@@ -24,7 +25,7 @@ def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe"), url_arg:
          mock.patch.object(check, "find_browser", return_value=browser), \
          mock.patch.object(check, "vram_info", return_value=(1000, 12000)), \
          contextlib.redirect_stdout(io.StringIO()) as out:
-        code = check.run_check(None, None, None, url_arg)
+        code = check.run_check(model_arg, None, None, url_arg)
     return code, out.getvalue(), stop
 
 
@@ -58,6 +59,13 @@ class RunCheck(unittest.TestCase):
         code, out, _ = run_check(keys=["other/model"])
         self.assertEqual(code, 1)
         self.assertIn("[ FAIL ] model downloaded", out)
+
+    def test_a_name_not_in_models_is_said_to_be_taken_as_a_key(self):
+        # e.g. --model ol-think before it's added to settings.json
+        _, out, _ = run_check(model_arg="ol-think")
+        self.assertIn("[  ok  ] model setting: ol-think isn't in \"models\" in settings.json, so it's taken as a "
+                      "model key", out)
+        self.assertIn("[  ok  ] model setting: m -> pub/m", run_check()[1])
 
     def test_server_on_another_computer(self):
         code, out, _ = run_check(url_arg="http://pc:1234")

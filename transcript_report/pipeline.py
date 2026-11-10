@@ -178,6 +178,8 @@ def fingerprint(sections: list[str]) -> str:
 
 
 def save_notes(path: Path, fp: str, notes: list[str]) -> None:
+    # Made here, not before the first section, so a run that fails on it leaves no empty folder.
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(NOTES_STAMP.format(fp) + "\n\n" + "\n\n".join(notes), encoding="utf-8")
 
 
@@ -223,7 +225,6 @@ def analyse(opts: RunOptions, prompts: Prompts, text: str, notes_path: Path, cha
         elif saved:
             notes = saved[:n]
             say(f"Resuming: {len(notes)} of {n} sections already done.")
-    notes_path.parent.mkdir(parents=True, exist_ok=True)
     for i, sec in enumerate(sections[len(notes):], len(notes) + 1):
         reply = chat(prompts.notes, section_user(opts, words, i, n, sec),
                      opts.output_tokens(NOTES_TOKENS), f"Section {i}/{n} notes")

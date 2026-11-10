@@ -122,7 +122,8 @@ own default is to cut or shift an input that doesn't fit, and that's turned off.
 runs, before it starts. When the script starts `ollama serve` itself, it passes its own
 environment on, so setting them in the same terminal works:
 
-- `OLLAMA_FLASH_ATTENTION=1` turns on flash attention.
+- `OLLAMA_FLASH_ATTENTION=1` forces flash attention on. Ollama already turns it on by itself
+  where your GPU supports it, so this is only needed if it doesn't.
 - `OLLAMA_KV_CACHE_TYPE` sets how the context is stored: `f16`, `q8_0` or `q4_0`. The
   smaller types use less memory. It needs flash attention on.
 - `OLLAMA_NUM_PARALLEL` sets how many requests Ollama serves at once. Each one gets the full

@@ -87,7 +87,14 @@ def read_error(e: urllib.error.HTTPError) -> bytes:
 
 
 def error_text(err: object) -> str:
-    """The message in a server error: {"message": ...} (LM Studio), or a plain value."""
+    """The message in a server error: {"message": ...} (LM Studio), a JSON string holding
+    {"error": {"message": ...}} (llama.cpp's error, passed on by Ollama), or a plain value."""
+    if isinstance(err, str) and err.lstrip().startswith("{"):
+        try:
+            inner = json.loads(err)
+        except ValueError:
+            return err
+        return error_text(inner.get("error", inner)) if isinstance(inner, dict) else err
     return err.get("message", str(err)) if isinstance(err, dict) else str(err)
 
 

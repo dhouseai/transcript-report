@@ -89,6 +89,11 @@ class Analyse(unittest.TestCase):
             analyse(RunOptions(ctx=16384), PROMPTS, LONG_TEXT, self.notes, chat, resume=True)
         self.assertTrue(chat.labels[0].startswith("Section 3/"))
 
+    def test_failing_on_the_first_section_leaves_no_folder(self):
+        with quiet(), self.assertRaises(TranscriptReportError):
+            analyse(RunOptions(ctx=16384), PROMPTS, LONG_TEXT, self.notes, FakeChat(fail_on=1))
+        self.assertFalse(self.notes.parent.exists())
+
     def test_resume_ignores_notes_from_a_different_split(self):
         self.stop_at_third_call()
         chat = FakeChat()

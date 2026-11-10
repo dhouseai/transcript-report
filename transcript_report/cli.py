@@ -166,7 +166,7 @@ def use_loaded_copy(existing: LoadedModel, model: ModelChoice, opts: RunOptions,
     """Take the context size from a copy of the model that's already loaded in `server`
     ("LM Studio"), and warn about anything in its setup that could make requests fail."""
     say(f"Using {model.key}, already loaded in {server} "
-        f"(context {existing.ctx or 'unknown'}). It stays loaded afterwards.")
+        f"(context {f'{existing.ctx:,}' if existing.ctx else 'unknown'}). It stays loaded afterwards.")
     if existing.ctx:
         if ctx_arg and ctx_arg != existing.ctx:
             warn(f"--ctx {ctx_arg:,} is ignored: the loaded copy has a {existing.ctx:,}-token "

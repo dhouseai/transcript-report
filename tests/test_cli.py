@@ -285,7 +285,7 @@ class SessionTests:
         model_id, opts, err = self.run_session(runner)
         self.assertEqual(model_id, "theirs")
         self.assertEqual(opts.ctx, 16384)
-        self.assertIn(f"already loaded in {runner.name}", err)
+        self.assertIn(f"already loaded in {runner.name} (context 16,384)", err)
         self.assertNotIn("WARNING", err)
         self.assertEqual(runner.calls, ["start", "stop"])
 
