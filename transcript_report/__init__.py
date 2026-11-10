@@ -1,5 +1,5 @@
 """transcript-report: turn a video transcript into a structured report with a local model
-in LM Studio.
+in LM Studio or Ollama.
 
 Modules:
     cli.py           the command line (options, the model session, each transcript)

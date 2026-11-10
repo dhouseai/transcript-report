@@ -27,7 +27,8 @@ python -m unittest discover -s tests -t .
 ruff check .
 ```
 
-The tests need no GPU or LM Studio: the model and LM Studio's API are replaced by fakes.
+The tests need no GPU, LM Studio or Ollama: the model and the runners' APIs are replaced by
+fakes.
 GitHub Actions runs them on Windows, macOS and Linux with Python 3.10–3.14.
 
 Guidelines:

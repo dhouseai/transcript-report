@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "transcript-report"
 dynamic = ["version"]
-description = "Turn a video transcript into an honest, practical report with a local model in LM Studio."
+description = "Turn a video transcript into an honest, practical report with a local model in LM Studio or Ollama."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Nolan Docherty" }]
-keywords = ["youtube", "transcript", "llm", "lm-studio", "local-ai", "summary"]
+keywords = ["youtube", "transcript", "llm", "lm-studio", "ollama", "local-ai", "summary"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

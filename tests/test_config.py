@@ -14,6 +14,7 @@ from transcript_report.config import (
     Settings,
     app_home,
     choose_runner,
+    choose_server,
     find_resumable,
     find_transcript,
     init_home,
@@ -227,6 +228,26 @@ class ChooseRunner(unittest.TestCase):
 
     def test_default_is_lm_studio(self):
         self.assertEqual(choose_runner(None, None, Settings(Path("t"), Path("d"), Path("r"))), "lmstudio")
+
+
+class ChooseServer(unittest.TestCase):
+    """The "server_url" and "api_token" settings are for the "runner" setting's runner."""
+
+    def setUp(self):
+        self.s = Settings(Path("t"), Path("d"), Path("r"), runner="lmstudio",
+                          server_url="http://lm:1234", api_token="lm-token")
+
+    def test_the_settings_runner_gets_the_server_and_token(self):
+        self.assertEqual(choose_server(None, self.s, "lmstudio"), ("http://lm:1234", "lm-token"))
+
+    def test_the_other_runner_is_on_this_computer_with_no_token(self):
+        self.assertEqual(choose_server(None, self.s, "ollama"), ("", ""))
+        local = Settings(Path("t"), Path("d"), Path("r"), runner="lmstudio", api_token="lm-token")
+        self.assertEqual(choose_server(None, local, "ollama"), ("", ""))   # LM Studio's token never goes to Ollama
+
+    def test_server_url_arg_changes_only_the_address(self):
+        self.assertEqual(choose_server("http://x:1", self.s, "lmstudio"), ("http://x:1", "lm-token"))   # as in 0.1.0
+        self.assertEqual(choose_server("http://x:11434", self.s, "ollama"), ("http://x:11434", ""))
 
 
 class Home(TempDirTest):

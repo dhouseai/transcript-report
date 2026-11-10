@@ -172,6 +172,7 @@ class RunnerChoice(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             s = Settings(d / "in", d / "done", d / "reports", source=d / "settings.json", runner=runner,
+                         server_url="http://lm:1234", api_token="lm-token",
                          models={"ol": ModelEntry("qwen3:14b", runner="ollama"), "lm": ModelEntry("pub/m")})
             s.transcripts_dir.mkdir()
             (s.transcripts_dir / "v.txt").write_text("A video.", encoding="utf-8")
@@ -190,6 +191,18 @@ class RunnerChoice(unittest.TestCase):
     def test_port_is_left_to_the_runner_unless_given(self):
         self.assertIsNone(self.runner_built("--model", "ol")[1])
         self.assertEqual(self.runner_built("--model", "ol", "--port", "5000")[1], 5000)
+
+    def test_server_and_token_follow_the_runner(self):
+        self.assertEqual(self.runner_built("--model", "lm")[2:], ("http://lm:1234", "lm-token"))
+        # The server and token settings are LM Studio's here, so an Ollama model gets neither.
+        self.assertEqual(self.runner_built("--model", "ol")[2:], ("", ""))
+        self.assertEqual(self.runner_built("--model", "lm", "--runner", "ollama")[2:], ("", ""))
+        self.assertEqual(self.runner_built("--model", "ol", runner="ollama")[2:], ("http://lm:1234", "lm-token"))
+        # --server-url changes only the address.
+        self.assertEqual(self.runner_built("--model", "lm", "--server-url", "http://pc:1234")[2:],
+                         ("http://pc:1234", "lm-token"))
+        self.assertEqual(self.runner_built("--model", "ol", "--server-url", "http://pc:11434")[2:],
+                         ("http://pc:11434", ""))
 
     def test_check_gets_the_runner_and_port(self):
         with mock.patch.object(cli, "run_check", return_value=0) as check:

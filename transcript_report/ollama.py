@@ -30,7 +30,8 @@ if sys.platform == "win32":
 else:
     OLLAMA_EXE = Path("/usr/local/bin/ollama")
 AUTH_HINT = ("Ollama itself has no API tokens, so this is probably a proxy in front of it: set "
-             "\"api_token\" in settings.json to the token it expects.")
+             "\"api_token\" in settings.json to the token it expects (it's only sent when \"runner\" is "
+             "\"ollama\").")
 
 
 class Ollama(JSONClient):

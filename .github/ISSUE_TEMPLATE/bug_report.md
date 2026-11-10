@@ -28,7 +28,7 @@ python -m transcript_report ...
 **Your setup**
 - OS:
 - GPU and VRAM:
-- LM Studio version:
+- LM Studio or Ollama, and its version:
 - Model and quantisation, and the `ctx` you used:
 - Transcript type (`.txt` from YouTube's panel, `.srt`, `.vtt`) and roughly how long the video is:
 

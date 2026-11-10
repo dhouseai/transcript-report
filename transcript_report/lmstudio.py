@@ -23,7 +23,8 @@ LMSTUDIO_PORT = 1234
 TOKEN_ENV = "LM_API_TOKEN"   # LM Studio's API token, when settings.json has no "api_token"
 LMS_EXE = Path.home() / ".lmstudio" / "bin" / ("lms.exe" if sys.platform == "win32" else "lms")
 AUTH_HINT = ("The server requires an API token: create one in LM Studio's server settings and set "
-             f"\"api_token\" in settings.json (or the {TOKEN_ENV} environment variable).")
+             f"\"api_token\" in settings.json (it's only sent when \"runner\" is \"lmstudio\"), or the {TOKEN_ENV} "
+             "environment variable.")
 
 
 class LMStudio(JSONClient):

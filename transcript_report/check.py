@@ -11,6 +11,7 @@ from .config import (
     ModelChoice,
     app_home,
     choose_runner,
+    choose_server,
     list_transcripts,
     load_prompts,
     load_settings,
@@ -66,8 +67,8 @@ def run_check(model_arg: str | None, runner_arg: str | None, port: int | None, u
         line(FAIL, "model setting", str(e))
         model = None
 
-    runner = make_runner(choose_runner(runner_arg, model, settings), port, url_arg or settings.server_url,
-                         settings.api_token)
+    kind = choose_runner(runner_arg, model, settings)
+    runner = make_runner(kind, port, *choose_server(url_arg, settings, kind))
     check_server(runner, model, line)
 
     browser = find_browser()

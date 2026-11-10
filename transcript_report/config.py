@@ -55,8 +55,8 @@ STRING_DEFAULTS = {
     "report_format": "md",   # "md" or "pdf": what the report is saved as when --pdf/--md isn't given
     "default_model": "",     # name from "models" used when --model isn't given
     "runner": "lmstudio",    # "lmstudio" or "ollama": runs the models that don't set their own "runner"
-    "server_url": "",        # e.g. http://192.168.1.20:1234 for the runner on another computer;
-                             # empty: the runner on this computer, started and stopped as needed
+    "server_url": "",        # e.g. http://192.168.1.20:1234 for the "runner" setting's runner on
+                             # another computer; empty: on this computer, started and stopped as needed
     "api_token": "",         # for a server that asks for one; empty: none, or $LM_API_TOKEN for LM Studio
 }
 KNOWN_SETTINGS = (*STRING_DEFAULTS, "models")
@@ -108,7 +108,7 @@ class Settings:
     models: dict[str, ModelEntry] = field(default_factory=dict)
     source: Path | None = None   # the settings.json read, or None if there wasn't one
     runner: str = "lmstudio"     # for models without their own "runner"
-    server_url: str = ""         # the runner elsewhere; empty for this computer
+    server_url: str = ""         # the "runner" setting's runner elsewhere; empty for this computer
     api_token: str = ""          # sent as "Authorization: Bearer ..." if set; only what settings.json says
 
 
@@ -417,3 +417,13 @@ def choose_runner(runner_arg: str | None, model: ModelChoice | None, settings: S
     """Which runner to use: --runner, else the model's "runner" in settings.json, else the
     "runner" setting."""
     return runner_arg or (model.runner if model else "") or settings.runner
+
+
+def choose_server(url_arg: str | None, settings: Settings, runner: str) -> tuple[str, str]:
+    """(server address, API token) for `runner`, the runner chosen for this run (empty address:
+    this computer). The "server_url" and "api_token" settings are for the "runner" setting's
+    runner; the other runner is on this computer, with no token. --server-url changes only the
+    address."""
+    if runner == settings.runner:
+        return url_arg or settings.server_url, settings.api_token
+    return url_arg or "", ""

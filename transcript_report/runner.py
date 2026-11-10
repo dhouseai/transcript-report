@@ -63,14 +63,19 @@ class Runner(Protocol):
         ...
 
 
-def make_runner(kind: str, port: int | None, url: str, token: str) -> Runner:
-    """The runner for `kind`: on this computer (on `port`, or its usual one), or at `url`."""
+def runner_class(kind: str) -> type:
+    """The Runner class for `kind`, e.g. for its name or list_hint without connecting to anything."""
     # Imported here because the runners import LoadedModel from this module.
     from .lmstudio import LMStudioRunner
     from .ollama import OllamaRunner
 
     if kind == "lmstudio":
-        return LMStudioRunner(port, url, token)
+        return LMStudioRunner
     if kind == "ollama":
-        return OllamaRunner(port, url, token)
+        return OllamaRunner
     raise TranscriptReportError(f"Unknown runner '{kind}'. Known: {', '.join(RUNNERS)}")
+
+
+def make_runner(kind: str, port: int | None, url: str, token: str) -> Runner:
+    """The runner for `kind`: on this computer (on `port`, or its usual one), or at `url`."""
+    return runner_class(kind)(port, url, token)

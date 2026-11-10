@@ -14,8 +14,8 @@ def settings(model: ModelEntry | None = None, runner: str = "lmstudio") -> Setti
                     source=Path("settings.json"), runner=runner)
 
 
-def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe")):
-    """run_check() on this computer with LM Studio, the browser and the GPU faked."""
+def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe"), url_arg: str | None = None):
+    """run_check() with LM Studio, the browser and the GPU faked."""
     with mock.patch.object(check, "load_settings", return_value=settings()), \
          mock.patch.object(lmstudio, "find_lms", return_value=Path("lms")), \
          mock.patch.object(lmstudio, "ensure_server", return_value=True), \
@@ -24,7 +24,7 @@ def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe")):
          mock.patch.object(check, "find_browser", return_value=browser), \
          mock.patch.object(check, "vram_info", return_value=(1000, 12000)), \
          contextlib.redirect_stdout(io.StringIO()) as out:
-        code = check.run_check(None, None, None, None)
+        code = check.run_check(None, None, None, url_arg)
     return code, out.getvalue(), stop
 
 
@@ -58,6 +58,12 @@ class RunCheck(unittest.TestCase):
         code, out, _ = run_check(keys=["other/model"])
         self.assertEqual(code, 1)
         self.assertIn("[ FAIL ] model downloaded", out)
+
+    def test_server_on_another_computer(self):
+        code, out, _ = run_check(url_arg="http://pc:1234")
+        self.assertEqual(code, 0)
+        self.assertIn("[  ok  ] LM Studio server: http://pc:1234 (on another computer)", out)
+        self.assertNotIn("lms command", out)
 
     def test_no_browser_is_only_a_warning_for_markdown(self):
         code, out, _ = run_check(browser=None)

@@ -47,10 +47,15 @@ The file name becomes the report name, so name it after the video.
 
 ## What a run does
 
-- Starts LM Studio's server if it isn't running, and stops it again afterwards.
+- Picks the runner, the program that runs the model: `--runner`, else the model's
+  `"runner"` in settings.json, else the `"runner"` setting, else LM Studio.
+- Starts the runner's server (LM Studio's, or `ollama serve`) if it isn't running, and stops
+  it again afterwards.
 - Loads the model, and unloads it at the end so the VRAM is free again. If the model is
-  already loaded in LM Studio, that copy is used with the context it was loaded with, and
-  it stays loaded.
+  already loaded in LM Studio or Ollama, that copy is used with the context it was loaded
+  with, and it stays loaded. If the runner doesn't say what that context is, a warning says
+  so and the `"ctx"` from settings.json is used instead; Ollama may then reload the model at
+  that size, and the reloaded copy is left loaded too.
 - Short transcripts are analysed in one pass. Long ones are split into sections. Each
   section's notes are saved to `<video name>_report_section_notes.md` as soon as they're
   done, and the notes are then combined into the report.
@@ -69,8 +74,9 @@ The file name becomes the report name, so name it after the video.
 | `--all` | Analyse every transcript waiting in the transcripts folder, loading the model once. A video that fails is reported and skipped |
 | `--resume` | Continue a long video's stopped run: sections whose notes were already saved are skipped. Use the same `--ctx` and `--chunk-words` as before |
 | `--init` | Create settings.json and the transcripts and reports folders in the home folder |
-| `--check` | Test the setup (settings, prompts, LM Studio, the model, a PDF browser, the GPU) and say what to fix |
-| `--model <name>` | A name from `"models"` in settings.json, or an LM Studio key from `lms ls` (context then defaults to 32768 unless `--ctx`) |
+| `--check` | Test the setup (settings, prompts, the runner, the model, a PDF browser, the GPU) and say what to fix. With Ollama it also shows the server's version |
+| `--model <name>` | A name from `"models"` in settings.json, or the runner's model key: from `lms ls` for LM Studio, `ollama list` for Ollama (context then defaults to 32768 unless `--ctx`) |
+| `--runner lmstudio` / `--runner ollama` | The program that runs the model (default: the model's `"runner"`, else the `"runner"` setting, else `lmstudio`) |
 | `--ctx <tokens>` | Context size (default: the model's `"ctx"` in settings.json) |
 | `--pdf` / `--md` | Save as PDF or Markdown (default: `"report_format"`) |
 | `--out <file or folder>` | Where to save the report. Ending it in `.pdf` or `.md` also picks the format (a file given this way is overwritten). In a folder, an existing report is never overwritten: `_2`, `_3`, ... is added. With `--all` it must be a folder |
@@ -78,8 +84,8 @@ The file name becomes the report name, so name it after the video.
 | `--chunk-words <n>` | Words per section for long videos (default 10000; lowered automatically if a section wouldn't fit the context) |
 | `--single-max-words <n>` | Longer transcripts are split into sections (default 15000, about 100 minutes of speech) |
 | `--temperature <t>` | Sampling temperature (default: the model's `"sampling"`, else 0.4) |
-| `--port <n>` | Port for LM Studio's server on this computer, if it isn't running (default 1234) |
-| `--server-url <url>` | LM Studio on another computer, e.g. `http://192.168.1.20:1234` (default: `"server_url"`) |
+| `--port <n>` | Port for the runner's server on this computer (default 1234 for LM Studio, 11434 for Ollama). LM Studio's server, if it's already running, is used on its own port. Ollama is looked for only on this port: if Ollama is running on another one, a second server is started here and loads its own copy of the model, so leave `--port` out to use the running one |
+| `--server-url <url>` | The runner on another computer, e.g. `http://192.168.1.20:1234` for LM Studio or `http://192.168.1.20:11434` for Ollama (default: `"server_url"`, for the `"runner"` setting's runner; else this computer). It changes only the address: the token is still `"api_token"` for the `"runner"` setting's runner, and none for the other |
 | `--version` | Print the version |
 
 ## settings.json
@@ -95,8 +101,9 @@ are just notes.
 | `reports_folder` | Where reports go, one folder per video | `reports` |
 | `prompts_folder` | A folder with your own prompt files (see below) | empty: the built-in prompts |
 | `report_format` | `"md"` or `"pdf"`: what reports are saved as | `md` |
-| `server_url` | LM Studio on another computer (see below) | empty: this computer |
-| `api_token` | LM Studio API token, if its server requires one (see below) | empty: the `LM_API_TOKEN` environment variable, else none |
+| `runner` | `"lmstudio"` or `"ollama"`: runs the models that don't set their own `"runner"` | `lmstudio` |
+| `server_url` | The `"runner"` setting's runner on another computer (see below). Models on the other runner use it on this computer | empty: this computer |
+| `api_token` | An API token for that server, if it requires one (see below); never sent to the other runner | empty: for LM Studio the `LM_API_TOKEN` environment variable, else none |
 | `default_model` | The model used when `--model` isn't given | |
 | `models` | The models you can pick, by name (below) | |
 
@@ -107,12 +114,22 @@ are just notes.
     "ctx": 65536,
     "sampling": {"temperature": 0.4, "top_p": 0.8, "top_k": 20},
     "notes": "anything you like"
+  },
+  "qwen3-14b": {
+    "key": "qwen3:14b",
+    "runner": "ollama",
+    "ctx": 32768
   }
 }
 ```
 
-- `key`: the LM Studio model key, from `lms ls`. Required.
-- `ctx`: the context size in tokens (default 32768).
+- `key`: the model's key in its runner: from `lms ls` for LM Studio, or `ollama list` for
+  Ollama (a name without a tag means `:latest`). Required.
+- `runner`: `"lmstudio"` or `"ollama"`, so that picking the model picks its runner too
+  (default: the `"runner"` setting). Keys are different in each, so set it for every model
+  that doesn't use the default runner.
+- `ctx`: the context size in tokens (default 32768). With Ollama it's sent with every
+  request; if it's more than the model supports, Ollama caps it and the script warns.
 - `sampling`: optional overrides for `temperature` (0.4), `top_p` (0.8), `top_k` (20),
   `min_p` (0.0) and `repeat_penalty` (1.05). The defaults suit Qwen-style models; check your
   model's card for its recommended values.
@@ -154,6 +171,25 @@ loaded before the analysis and unloaded after it (unless it was already loaded).
 check is skipped, as it can only see this computer's GPU. The transcript is sent over plain
 HTTP, so only do this on a network you trust.
 
+## Ollama
+
+Setting up Ollama, its context and its environment variables are covered in the README's
+[Using Ollama](../README.md#using-ollama). In short:
+
+- Add the model with its Ollama name as `"key"` and `"runner": "ollama"`, or set the
+  `"runner"` setting, or pass `--runner ollama`.
+- If Ollama isn't running, `ollama serve` is started for the run and stopped afterwards. It's
+  found on PATH, else at `%LOCALAPPDATA%\Programs\Ollama\ollama.exe` on Windows or
+  `/usr/local/bin/ollama` on macOS and Linux. It listens on `127.0.0.1` and the `--port`
+  given (default 11434).
+- **On another computer:** start Ollama there with `OLLAMA_HOST=0.0.0.0` set, then set
+  `"server_url": "http://<that computer's address>:11434"` and `"runner": "ollama"` here,
+  or pass `--server-url`. Ollama has no API tokens of its own; `"api_token"` is only for a
+  proxy in front of it.
+- **Alongside LM Studio:** `"server_url"` and `"api_token"` are for the `"runner"` setting's
+  runner, so with `"runner": "lmstudio"` they're LM Studio's, and Ollama models use Ollama on
+  this computer with no token. Both runners on other computers at once isn't supported yet.
+
 ## Custom prompts
 
 The report's sections and wording come from two built-in prompt files (in the package's
@@ -182,8 +218,18 @@ instead and a warning says why.
 - **"Input is too long for the context" / "LM Studio ended the reply early":** raise `--ctx`
   (if your VRAM allows), or lower `--chunk-words`. The exact error is in LM Studio's server
   log (Developer tab, or `~/.lmstudio/server-logs`).
+- **"Ollama ended the reply early" / "too long" with Ollama:** the same fixes: raise `--ctx`
+  or lower `--chunk-words`.
+- **"Ollama capped the context at N":** the model supports at most N tokens. The run goes on
+  with N; set `"ctx"` to it to stop the warning.
+- **"N% of the model is on the CPU":** it didn't all fit in VRAM, so it will be slow. Lower
+  `--ctx`, or see the Ollama settings in the README.
+- **"this model can't think; run without --think":** the Ollama model has no thinking mode.
 - **A long video stopped part-way:** run it again with `--resume`.
 - **"LM Studio error 401" or "403":** the server requires an API token; see
   [LM Studio on another computer](#lm-studio-on-another-computer).
+- **"Ollama error 401" or "403":** Ollama has no API tokens, so this comes from a proxy in
+  front of it: set `"api_token"` to the token it expects. It's only sent when `"runner"` is
+  `"ollama"`.
 - **Slow, and VRAM is nearly full:** close GPU-heavy apps or lower `--ctx`. On Windows, once
   VRAM runs out the GPU falls back to shared system memory, which is much slower.

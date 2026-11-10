@@ -26,6 +26,7 @@ from .config import (
     Settings,
     app_home,
     choose_runner,
+    choose_server,
     find_resumable,
     find_transcript,
     init_home,
@@ -45,14 +46,14 @@ from .helpers import check_vram, finish_progress, progress, say, warn
 from .http_client import APIError
 from .pdf import write_pdf
 from .pipeline import MIN_SECTION_WORDS, ChatFn, analyse
-from .runner import LoadedModel, Runner, make_runner
+from .runner import LoadedModel, Runner, make_runner, runner_class
 from .transcripts import read_transcript
 
 
 def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog=prog,
-        description="Analyse a video transcript with a local model in LM Studio.",
+        description="Analyse a video transcript with a local model in LM Studio or Ollama.",
         epilog='The default format is "report_format" in settings.json. Settings and the default '
                f'folders are in {app_home()} (set {HOME_ENV} to use another folder).')
     p.add_argument("transcript", type=Path, nargs="?",
@@ -83,8 +84,9 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
                    help="Port for the runner's server on this computer (default: 1234 for LM Studio, "
                         "11434 for Ollama)")
     p.add_argument("--server-url", metavar="URL",
-                   help="The runner on another computer, e.g. http://192.168.1.20:1234 "
-                        "(default: \"server_url\" in settings.json, else this computer)")
+                   help="The runner on another computer, e.g. http://192.168.1.20:1234 for LM Studio or "
+                        "http://192.168.1.20:11434 for Ollama (default: \"server_url\" in settings.json, "
+                        "for the \"runner\" setting's runner; else this computer)")
     p.add_argument("--out", type=Path, help="Report path or folder (default: <reports folder>/<video name>/"
                    "<video name>_report.md or .pdf). Ending it in .pdf or .md also picks the format")
     fmt = p.add_mutually_exclusive_group()
@@ -241,8 +243,8 @@ def analyse_transcript(transcript: Path, text: str, args: argparse.Namespace, se
 def run_init(runner_arg: str | None) -> int:
     path, created, settings = init_home()
     if created:
-        runner = make_runner(choose_runner(runner_arg, None, settings), None, "", "")
-        print(f"Created {path}\nOpen it and set your model's \"key\" ({runner.list_hint} to see them) "
+        list_hint = runner_class(choose_runner(runner_arg, None, settings)).list_hint
+        print(f"Created {path}\nOpen it and set your model's \"key\" ({list_hint} to see them) "
               f"and \"ctx\", then run with --check.")
     else:
         print(f"{path} already exists, so it was left as it is.")
@@ -290,8 +292,8 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     start = time.monotonic()
     failed: list[str] = []
     # On this computer, starting the server may point the runner at another port.
-    runner = make_runner(choose_runner(args.runner, model, settings), args.port,
-                         args.server_url or settings.server_url, settings.api_token)
+    kind = choose_runner(args.runner, model, settings)
+    runner = make_runner(kind, args.port, *choose_server(args.server_url, settings, kind))
     with model_session(runner, model, opts, args.ctx) as model_id:
         chat_fn = partial(runner.chat, model_id, opts)
         for n, (transcript, text) in enumerate(jobs, 1):

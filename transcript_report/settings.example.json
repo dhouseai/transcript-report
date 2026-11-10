@@ -8,12 +8,14 @@
   "_prompts_help": "prompts_folder: a folder with your own report_prompt.md and/or section_notes_prompt.md. Empty: the built-in prompts.",
   "prompts_folder": "",
 
-  "_server_url_help": "server_url: LM Studio on another computer, e.g. http://192.168.1.20:1234. Empty: LM Studio on this computer, started and stopped as needed.",
+  "_runner_help": "runner: the program that runs the models that don't set their own \"runner\": \"lmstudio\" or \"ollama\".",
+  "runner": "lmstudio",
+  "_server_url_help": "server_url: the runner named by \"runner\" on another computer, e.g. http://192.168.1.20:1234 (LM Studio) or http://192.168.1.20:11434 (Ollama). Empty: on this computer, started and stopped as needed. Models on the other runner use it on this computer, and get no api_token.",
   "server_url": "",
-  "_api_token_help": "api_token: only if LM Studio's server has Require Authentication turned on. Empty: none, or the LM_API_TOKEN environment variable.",
+  "_api_token_help": "api_token: only if LM Studio's server has Require Authentication turned on, or for a proxy in front of Ollama. Empty: none, or for LM Studio the LM_API_TOKEN environment variable.",
   "api_token": "",
 
-  "_models_help": "default_model is used when --model isn't given. key = the model's LM Studio key (run `lms ls`); ctx = context size in tokens; sampling (optional) overrides temperature, top_p, top_k, min_p, repeat_penalty.",
+  "_models_help": "default_model is used when --model isn't given. key = the model's key in its runner (run `lms ls` for LM Studio, `ollama list` for Ollama); runner (optional) = \"lmstudio\" or \"ollama\", else the runner setting; ctx = context size in tokens; sampling (optional) overrides temperature, top_p, top_k, min_p, repeat_penalty. Remove the model you don't use.",
   "default_model": "my-model",
   "models": {
     "my-model": {
@@ -21,6 +23,12 @@
       "ctx": 32768,
       "sampling": {"temperature": 0.4},
       "notes": "Anything you like, e.g. which quantisation this is and how much VRAM it uses."
+    },
+    "my-ollama-model": {
+      "key": "REPLACE-with-a-name-from-ollama-list",
+      "runner": "ollama",
+      "ctx": 32768,
+      "notes": "To use this one, set default_model to \"my-ollama-model\" or pass --model my-ollama-model."
     }
   }
 }
