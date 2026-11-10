@@ -7,21 +7,24 @@ from unittest import mock
 
 from transcript_report import __version__, cli
 from transcript_report.config import ModelEntry, Settings
+from transcript_report.ollama import full_name, same_model
 from transcript_report.runner import LoadedModel
 
 
 class FakeRunner:
-    """Stands in for a Runner on another computer: records the calls that set things up
-    or free them. chat() fails for a transcript containing "FAIL"."""
+    """Stands in for a Runner, set up like LM Studio: an instance id, one request slot, the
+    context asked for, exact model keys. Records the calls that set things up or free them.
+    chat() fails for a transcript containing "FAIL"."""
 
     name = "ExampleLM"
     list_hint = "run `fake ls`"
     cli = "fake command"
-    on_this_computer = False
     url = "http://fake:1"
 
-    def __init__(self, loaded: LoadedModel | None = None, started: bool = True, keys=("pub/m",)):
+    def __init__(self, loaded: LoadedModel | None = None, started: bool = True, keys=("pub/m",),
+                 on_this_computer: bool = False):
         self.loaded_copy, self.started, self.keys = loaded, started, list(keys)
+        self.on_this_computer = on_this_computer
         self.calls: list[str] = []
 
     def start(self):
@@ -55,6 +58,25 @@ class FakeRunner:
         if "FAIL" in user:
             raise cli.TranscriptReportError("too long")
         return "# Report"
+
+
+class FakeOllama(FakeRunner):
+    """A fake Runner set up like Ollama: the model's full name as its id, no parallel count,
+    the context capped at the model's maximum, and a bare name matching its :latest tag."""
+
+    name = "ExampleOllama"
+
+    def __init__(self, loaded: LoadedModel | None = None, started: bool = True, keys=("qwen3:latest",),
+                 on_this_computer: bool = False, max_ctx: int = 0):
+        super().__init__(loaded, started, keys, on_this_computer)
+        self.max_ctx = max_ctx
+
+    def has_model(self, key):
+        return any(same_model(k, key) for k in self.keys)
+
+    def load(self, key, ctx):
+        self.calls.append(f"load {key} {ctx}")
+        return LoadedModel(id=full_name(key), ctx=min(ctx, self.max_ctx or ctx), parallel=0)
 
 
 def parse(*argv):
@@ -215,42 +237,110 @@ class SaveReport(unittest.TestCase):
             self.assertEqual(Path(d, "notes.md").read_text(encoding="utf-8"), "my own notes")
 
 
-class ModelSession(unittest.TestCase):
-    """model_session() frees what it set up, even when the analysis fails."""
+class SessionTests:
+    """model_session() frees what it set up, even when the analysis fails. Mixed into one
+    TestCase per kind of runner, each with a fake set up like that runner."""
 
-    def run_session(self, runner, fail=False, listed=True):
+    Runner: type[FakeRunner]
+    KEY: str          # a model key the fake has
+    LOADED_ID: str    # the id the fake's load() hands out for KEY
+    PARALLEL: int     # what the runner reports for a loaded copy's request slots
+
+    def run_session(self, runner, fail=False, listed=True, ctx_arg=None, key=None):
         opts = cli.RunOptions(ctx=8192)
-        model = cli.ModelChoice("m", "pub/m", 8192, listed)
-        with contextlib.redirect_stderr(io.StringIO()) as err:
-            with cli.model_session(runner, model, opts, None) as model_id:
+        model = cli.ModelChoice("m", key or self.KEY, 8192, listed)
+        with contextlib.redirect_stderr(io.StringIO()) as err, mock.patch.object(cli, "check_vram") as vram:
+            with cli.model_session(runner, model, opts, ctx_arg) as model_id:
                 if fail:
                     raise cli.TranscriptReportError("boom")
+        self.vram = vram
         return model_id, opts, err.getvalue()
 
     def test_loads_then_unloads_and_stops_server_after_failure(self):
-        runner = FakeRunner()
+        runner = self.Runner()
         with self.assertRaisesRegex(cli.TranscriptReportError, "boom"):
             self.run_session(runner, fail=True)
-        self.assertEqual(runner.calls, ["start", "load pub/m 8192", "unload inst-1", "stop"])
+        self.assertEqual(runner.calls, ["start", f"load {self.KEY} 8192", f"unload {self.LOADED_ID}", "stop"])
+
+    def test_yields_the_id_load_hands_out(self):
+        model_id, _, err = self.run_session(self.Runner())
+        self.assertEqual(model_id, self.LOADED_ID)
+        self.assertNotIn("WARNING", err)
 
     def test_already_loaded_copy_is_used_and_left_loaded(self):
-        runner = FakeRunner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=1))
+        runner = self.Runner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=self.PARALLEL))
         model_id, opts, err = self.run_session(runner)
         self.assertEqual(model_id, "theirs")
         self.assertEqual(opts.ctx, 16384)
-        self.assertIn("already loaded in ExampleLM", err)
+        self.assertIn(f"already loaded in {runner.name}", err)
+        self.assertNotIn("WARNING", err)
         self.assertEqual(runner.calls, ["start", "stop"])
+
+    def test_ctx_arg_is_ignored_for_a_loaded_copy_of_another_size(self):
+        runner = self.Runner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=self.PARALLEL))
+        _, opts, err = self.run_session(runner, ctx_arg=4096)
+        self.assertEqual(opts.ctx, 16384)
+        self.assertIn(f"--ctx 4,096 is ignored: the loaded copy has a 16,384-token context. Unload it in "
+                      f"{runner.name}", err)
+
+    def test_loaded_copy_without_a_context_keeps_the_one_asked_for(self):
+        runner = self.Runner(loaded=LoadedModel(id="theirs", ctx=0, parallel=0))
+        _, opts, err = self.run_session(runner)
+        self.assertEqual(opts.ctx, 8192)
+        self.assertIn(f"{runner.name} didn't report the loaded copy's context size; assuming 8,192", err)
 
     def test_server_is_stopped_only_if_this_run_started_it(self):
-        runner = FakeRunner(started=False)
+        runner = self.Runner(started=False)
         self.run_session(runner)
-        self.assertEqual(runner.calls, ["start", "load pub/m 8192", "unload inst-1"])
+        self.assertEqual(runner.calls, ["start", f"load {self.KEY} 8192", f"unload {self.LOADED_ID}"])
 
     def test_model_key_the_server_doesnt_have(self):
-        runner = FakeRunner(keys=["other/model"])
-        with self.assertRaisesRegex(cli.TranscriptReportError, "an ExampleLM model key .*other/model"):
+        runner = self.Runner(keys=["other/model:7b"])
+        with self.assertRaisesRegex(cli.TranscriptReportError, f"an {runner.name} model key .*other/model:7b"):
             self.run_session(runner, listed=False)
         self.assertEqual(runner.calls, ["start", "stop"])
+
+    def test_vram_is_checked_only_on_this_computer(self):
+        self.run_session(self.Runner(on_this_computer=True))
+        self.vram.assert_called_once_with("lower --ctx (now 8,192)")
+        self.run_session(self.Runner())
+        self.vram.assert_not_called()
+
+    def test_vram_advice_for_a_loaded_copy(self):
+        runner = self.Runner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=self.PARALLEL),
+                             on_this_computer=True)
+        self.run_session(runner)
+        self.vram.assert_called_once_with(f"unload other models in {runner.name}")
+
+
+class LMStudioSession(SessionTests, unittest.TestCase):
+    Runner = FakeRunner
+    KEY = "pub/m"
+    LOADED_ID = "inst-1"
+    PARALLEL = 1
+
+    def test_loaded_copy_with_parallel_requests_warns(self):
+        _, _, err = self.run_session(self.Runner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=4)))
+        self.assertIn("allows 4 parallel requests", err)
+
+
+class OllamaSession(SessionTests, unittest.TestCase):
+    Runner = FakeOllama
+    KEY = "qwen3"
+    LOADED_ID = "qwen3:latest"
+    PARALLEL = 0   # Ollama doesn't report one, so the parallel warning never shows
+
+    def test_bare_name_matches_its_latest_tag(self):
+        runner = FakeOllama(keys=["qwen3:latest"])
+        model_id, _, _ = self.run_session(runner, listed=False)
+        self.assertEqual(model_id, "qwen3:latest")
+        self.assertEqual(runner.calls, ["start", "load qwen3 8192", "unload qwen3:latest", "stop"])
+
+    def test_capped_context_is_used(self):
+        runner = FakeOllama(max_ctx=4096, on_this_computer=True)
+        _, opts, _ = self.run_session(runner)
+        self.assertEqual(opts.ctx, 4096)
+        self.vram.assert_called_once_with("lower --ctx (now 4,096)")
 
 
 if __name__ == "__main__":
