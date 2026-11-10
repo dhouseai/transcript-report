@@ -1,15 +1,29 @@
-"""Sending one chat request to LM Studio's /api/v1/chat and streaming the reply (SSE)."""
+"""Sending one chat request to LM Studio's /api/v1/chat and streaming the reply (SSE), and
+the checks on a finished reply that every runner shares."""
 
 import json
 import re
 import time
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from http.client import HTTPException
 
 from .config import RunOptions
 from .errors import TranscriptReportError
 from .helpers import finish_progress, progress, strip_think, warn
 from .http_client import APIError, JSONClient, error_text
+
+
+@dataclass(frozen=True)
+class Reply:
+    """A finished reply as a runner's stream reader got it, for finish_reply() to check."""
+    pieces: list[str]            # the streamed text, in order
+    final_text: str              # the whole text if the runner sent it at the end, else ""
+    prompt_tokens: int           # 0 if the runner didn't say
+    output_tokens: int
+    tokens_per_s: float | None   # None if the runner didn't say
+    hit_limit: bool | None       # whether it stopped at max_tokens; None if the runner can't tell
+    seconds: float               # from sending the request to the end of the reply
 
 
 def too_long(opts: RunOptions) -> str:
@@ -80,6 +94,13 @@ def collect(events: Iterable[dict], label: str) -> tuple[list[str], dict | None]
 def chat(client: JSONClient, model_id: str, opts: RunOptions,
          system: str, user: str, max_tokens: int, label: str) -> str:
     """Send one request and return the reply text, with any reasoning removed."""
+    return finish_reply(stream_chat(client, model_id, opts, system, user, max_tokens, label),
+                        opts, max_tokens, label)
+
+
+def stream_chat(client: JSONClient, model_id: str, opts: RunOptions,
+                system: str, user: str, max_tokens: int, label: str) -> Reply:
+    """Send one request to LM Studio and read its streamed reply."""
     body = {
         "model": model_id,
         "system_prompt": system,
@@ -115,24 +136,36 @@ def chat(client: JSONClient, model_id: str, opts: RunOptions,
                                     f"(Developer tab, or ~/.lmstudio/server-logs).")
 
     stats = result.get("stats", {})
-    gen_n = int(stats.get("total_output_tokens", len(out)))
-    prompt_n = int(stats.get("input_tokens", 0))
     tps = stats.get("tokens_per_second")
-    tps = f"{tps:.1f} tok/s" if isinstance(tps, (int, float)) and tps else "? tok/s"
-    progress(f"{label}: done - {gen_n:,} tokens, {tps}, {time.monotonic() - t0:.0f}s", end="\n")
-    if prompt_n and prompt_n >= opts.ctx - max_tokens:
+    return Reply(
+        pieces=out,
+        final_text="".join(m.get("content", "") for m in result.get("output", [])
+                           if m.get("type") == "message"),
+        prompt_tokens=int(stats.get("input_tokens", 0)),
+        output_tokens=int(stats.get("total_output_tokens", len(out))),
+        tokens_per_s=tps if isinstance(tps, (int, float)) and tps else None,
+        hit_limit=None,   # LM Studio reports no stop reason
+        seconds=time.monotonic() - t0)
+
+
+def finish_reply(reply: Reply, opts: RunOptions, max_tokens: int, label: str) -> str:
+    """Report on a finished reply, warn if it nearly filled the context or was cut off, and
+    return its text with any reasoning removed. The same checks for every runner."""
+    tps = f"{reply.tokens_per_s:.1f} tok/s" if reply.tokens_per_s else "? tok/s"
+    progress(f"{label}: done - {reply.output_tokens:,} tokens, {tps}, {reply.seconds:.0f}s", end="\n")
+    if reply.prompt_tokens and reply.prompt_tokens >= opts.ctx - max_tokens:
         warn("input nearly filled the context window. "
              "Lower --chunk-words or raise --ctx.")
-    # LM Studio reports no stop reason, so treat using the whole allowance as hitting the limit.
-    cut_off = gen_n >= max_tokens
+    # Without a stop reason, using the whole allowance counts as hitting the limit.
+    cut_off = reply.output_tokens >= max_tokens if reply.hit_limit is None else reply.hit_limit
     if cut_off:
         warn("output hit the token limit and may be incomplete.")
 
-    text = "".join(m.get("content", "") for m in result.get("output", [])
-                   if m.get("type") == "message") or "".join(out)
-    text = strip_think(text)
+    text = strip_think(reply.final_text or "".join(reply.pieces))
     if not text:
-        raise TranscriptReportError(f"{label}: the model produced no output outside its reasoning"
-                                    + (" (it ran out of tokens while thinking; try without --think)."
-                               if cut_off else "."))
+        why = ""
+        if cut_off:
+            # Some models reason even with reasoning off, so suggest dropping --think only if it was given.
+            why = " (it ran out of tokens while thinking" + ("; try without --think)" if opts.think else ")")
+        raise TranscriptReportError(f"{label}: the model produced no output outside its reasoning{why}.")
     return text

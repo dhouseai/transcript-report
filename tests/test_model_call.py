@@ -8,7 +8,7 @@ from unittest import mock
 from transcript_report.config import RunOptions
 from transcript_report.errors import TranscriptReportError
 from transcript_report.lmstudio import APIError
-from transcript_report.model_call import chat, collect, is_context_error, parse_sse
+from transcript_report.model_call import Reply, chat, collect, finish_reply, is_context_error, parse_sse
 
 END = b'data: {"type":"chat.end","result":{"stats":{}}}'
 
@@ -88,6 +88,42 @@ class Chat(unittest.TestCase):
             self.send(too_long)
         self.assertNotIsInstance(cm.exception, APIError)   # so --all skips just this video
         self.assertIn("too long for the 8,192-token context", str(cm.exception))
+
+
+class FinishReply(unittest.TestCase):
+    """finish_reply() with a runner that reports a stop reason, which LM Studio doesn't."""
+
+    def finish(self, text="Text", output_tokens=10, hit_limit=None, prompt_tokens=100, max_tokens=500):
+        reply = Reply(pieces=[], final_text=text, prompt_tokens=prompt_tokens, output_tokens=output_tokens,
+                      tokens_per_s=None, hit_limit=hit_limit, seconds=1.0)
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            out = finish_reply(reply, RunOptions(ctx=8192), max_tokens, "Test")
+        return out, err.getvalue()
+
+    def test_hitting_the_limit_warns_below_the_allowance(self):
+        _, err = self.finish(output_tokens=200, hit_limit=True)
+        self.assertIn("hit the token limit", err)
+
+    def test_not_hitting_the_limit_doesnt_warn_at_the_allowance(self):
+        text, err = self.finish(output_tokens=500, hit_limit=False)
+        self.assertEqual(text, "Text")
+        self.assertNotIn("hit the token limit", err)
+
+    def test_only_reasoning_without_a_cut_off_doesnt_suggest_dropping_think(self):
+        with self.assertRaises(TranscriptReportError) as cm:
+            self.finish(text="<think>hmm</think>", hit_limit=False)
+        self.assertNotIn("--think", str(cm.exception))
+
+    def test_running_out_while_reasoning_without_think_doesnt_suggest_dropping_it(self):
+        with self.assertRaises(TranscriptReportError) as cm:
+            self.finish(text="<think>still going", output_tokens=500)
+        self.assertIn("ran out of tokens while thinking", str(cm.exception))
+        self.assertNotIn("--think", str(cm.exception))
+
+    def test_input_nearly_filling_the_context_warns(self):
+        _, err = self.finish(prompt_tokens=7800)
+        self.assertIn("nearly filled the context window", err)
+        self.assertIn("? tok/s", err)
 
 
 class ContextErrors(unittest.TestCase):
