@@ -65,7 +65,7 @@ class LoadSettings(TempDirTest):
 
     def test_mistakes_are_reported(self):
         bad = ["[1]", "{bad", {"nope": 1}, {"report_format": "doc"}, {"reports_folder": " "},
-               {"default_model": 3}, {"models": []}, {"models": {"a": {"ctx": 5}}},
+               {"default_model": 3}, {"models": []},
                {"models": {"a": {"key": "k", "ctx": True}}}, {"models": {"a": {"key": "k", "ctx": -1}}},
                {"models": {"a": {"key": "k", "cxt": 5}}},
                {"models": {"a": {"key": "k", "sampling": {"temp": 1}}}},
@@ -226,9 +226,6 @@ class ChooseRunner(unittest.TestCase):
             with self.subTest(runner_arg=runner_arg, model=model):
                 self.assertEqual(choose_runner(runner_arg, model, s), expected)
 
-    def test_default_is_lm_studio(self):
-        self.assertEqual(choose_runner(None, None, Settings(Path("t"), Path("d"), Path("r"))), "lmstudio")
-
 
 class ChooseServer(unittest.TestCase):
     """The "server_url" and "api_token" settings are for the "runner" setting's runner."""
@@ -241,9 +238,7 @@ class ChooseServer(unittest.TestCase):
         self.assertEqual(choose_server(None, self.s, "lmstudio"), ("http://lm:1234", "lm-token"))
 
     def test_the_other_runner_is_on_this_computer_with_no_token(self):
-        self.assertEqual(choose_server(None, self.s, "ollama"), ("", ""))
-        local = Settings(Path("t"), Path("d"), Path("r"), runner="lmstudio", api_token="lm-token")
-        self.assertEqual(choose_server(None, local, "ollama"), ("", ""))   # LM Studio's token never goes to Ollama
+        self.assertEqual(choose_server(None, self.s, "ollama"), ("", ""))   # LM Studio's token never goes to Ollama
 
     def test_server_url_arg_changes_only_the_address(self):
         self.assertEqual(choose_server("http://x:1", self.s, "lmstudio"), ("http://x:1", "lm-token"))

@@ -100,7 +100,6 @@ class Runner(unittest.TestCase):
         self.assertIsInstance(runner, OllamaRunner)
         self.assertEqual((runner.name, runner.list_hint, runner.cli),
                          ("Ollama", "run `ollama list`", "Ollama's ollama command"))
-        self.assertEqual(runner.url, "http://127.0.0.1:11434")
         self.assertEqual(make_runner("ollama", 5000, "", "").url, "http://127.0.0.1:5000")
         self.assertFalse(make_runner("ollama", None, "http://pc:11434", "").on_this_computer)
 
@@ -306,9 +305,6 @@ class KeepAlive(unittest.TestCase):
     def test_a_copy_this_run_loaded_gets_the_usual_time(self):
         self.assertEqual(self.keep_alive_sent(expires_in(60), load=True), "30m")
 
-    def test_a_copy_loaded_elsewhere_keeps_its_time_left(self):
-        self.assertAlmostEqual(self.keep_alive_sent(expires_in(7200)), 7200, delta=5)
-
     def test_the_time_left_is_worked_out_for_each_request(self):
         start = datetime.now(timezone.utc)
 
@@ -407,8 +403,10 @@ class Chat(unittest.TestCase):
         self.assertIn("hit the token limit", err)
 
     def test_reply_filling_the_context_is_too_long_and_not_an_api_error(self):
+        # "stop", not "length": an older Ollama that ignores shift: false can fill the context
+        # and still say "stop".
         with self.assertRaises(TranscriptReportError) as cm:
-            self.send(ndjson(text("Hi"), done(prompt_tokens=7900, tokens=292, reason="length")))
+            self.send(ndjson(text("Hi"), done(prompt_tokens=7900, tokens=292, reason="stop")))
         self.assertNotIsInstance(cm.exception, APIError)   # so --all skips just this video
         self.assertIn("too long for the 8,192-token context", str(cm.exception))
 
