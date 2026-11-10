@@ -1,8 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
-
-<!-- When tagging the release, replace "unreleased" with the date, e.g. 2026-11-20. -->
+## 0.2.0 (2026-11-10)
 
 First public release.
 

@@ -11,7 +11,7 @@ which model, quantisation and `ctx` you used, since most report quality comes fr
 ## Working on the code
 
 ```
-git clone https://github.com/<owner>/transcript-report
+git clone https://github.com/sodongit/transcript-report
 cd transcript-report
 python -m pip install -e .
 python -m pip install ruff

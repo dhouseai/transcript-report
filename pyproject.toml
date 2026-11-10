@@ -31,11 +31,10 @@ classifiers = [
 # No dependencies: only the Python standard library is used.
 
 [project.urls]
-# Replace <owner> with the GitHub user or organisation once the repository exists.
-Homepage = "https://github.com/<owner>/transcript-report"
-Documentation = "https://github.com/<owner>/transcript-report/blob/main/docs/usage.md"
-Issues = "https://github.com/<owner>/transcript-report/issues"
-Changelog = "https://github.com/<owner>/transcript-report/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/sodongit/transcript-report"
+Documentation = "https://github.com/sodongit/transcript-report/blob/main/docs/usage.md"
+Issues = "https://github.com/sodongit/transcript-report/issues"
+Changelog = "https://github.com/sodongit/transcript-report/blob/main/CHANGELOG.md"
 
 [project.scripts]
 transcript-report = "transcript_report.cli:main"

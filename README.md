@@ -42,7 +42,7 @@ are welcome.
 3. **Install transcript-report** (needs [Git](https://git-scm.com); or download the ZIP from
    GitHub and run `python -m pip install <unzipped folder>`):
    ```
-   python -m pip install git+https://github.com/<owner>/transcript-report
+   python -m pip install git+https://github.com/sodongit/transcript-report
    ```
 4. **Create your settings and folders:**
    ```
