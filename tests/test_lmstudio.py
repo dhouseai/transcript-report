@@ -1,3 +1,4 @@
+import email.message
 import io
 import json
 import unittest
@@ -18,7 +19,7 @@ def reply(data):
 
 def http_error(code, message):
     body = io.BytesIO(json.dumps({"error": {"message": message}}).encode("utf-8"))
-    return urllib.error.HTTPError("http://x", code, "err", {}, body)
+    return urllib.error.HTTPError("http://x", code, "err", email.message.Message(), body)
 
 
 class Client(unittest.TestCase):
@@ -61,6 +62,7 @@ class Models(unittest.TestCase):
             self.assertEqual(lmstudio.model_keys(client), ["a/one", "b/two"])
             self.assertIsNone(lmstudio.loaded_instance(client, "a/one"))
             inst = lmstudio.loaded_instance(client, "b/two")
+        assert inst is not None
         self.assertEqual((inst.id, inst.ctx, inst.parallel), ("b/two:1", 16384, 4))
 
     def test_unload_treats_not_loaded_as_done(self):

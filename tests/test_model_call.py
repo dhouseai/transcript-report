@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import unittest
+from typing import Any
 from unittest import mock
 
 from transcript_report.config import RunOptions
@@ -23,7 +24,7 @@ def sse(*events):
 
 
 def end(output=None, tokens=10):
-    result = {"stats": {"total_output_tokens": tokens, "input_tokens": 100}}
+    result: dict[str, Any] = {"stats": {"total_output_tokens": tokens, "input_tokens": 100}}
     if output is not None:
         result["output"] = [{"type": "message", "content": output}]
     return {"type": "chat.end", "result": result}

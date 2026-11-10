@@ -128,10 +128,12 @@ class Paths(TempDirTest):
     def test_move_to_done_keeps_both_copies(self):
         s = self.settings()
         s.transcripts_dir.mkdir()
+        moved = None
         for _ in range(2):
             t = s.transcripts_dir / "v.txt"
             t.write_text("x", encoding="utf-8")
             moved = move_to_done(t, s)
+        assert moved is not None
         self.assertEqual(moved.name, "v_2.txt")
         self.assertTrue((s.done_dir / "v.txt").exists())
 

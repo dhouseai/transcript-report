@@ -8,7 +8,7 @@ from transcript_report import check
 from transcript_report.config import ModelEntry, Settings
 
 
-def run_check(keys=("pub/m",), browser=Path("edge.exe")):
+def run_check(keys=("pub/m",), browser: Path | None = Path("edge.exe")):
     """run_check() on this computer with LM Studio, the browser and the GPU faked."""
     settings = Settings(Path("t"), Path("d"), Path("r"), default_model="m",
                         models={"m": ModelEntry("pub/m")}, source=Path("settings.json"))
