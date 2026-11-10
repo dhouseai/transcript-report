@@ -7,7 +7,51 @@ from unittest import mock
 
 from transcript_report import __version__, cli
 from transcript_report.config import Settings
-from transcript_report.lmstudio import LoadedInstance
+from transcript_report.runner import LoadedModel
+
+
+class FakeRunner:
+    """Stands in for a Runner on another computer: records the calls that set things up
+    or free them. chat() fails for a transcript containing "FAIL"."""
+
+    name = "ExampleLM"
+    list_hint = "run `fake ls`"
+    cli = "fake command"
+    on_this_computer = False
+    url = "http://fake:1"
+
+    def __init__(self, loaded: LoadedModel | None = None, started: bool = True, keys=("pub/m",)):
+        self.loaded_copy, self.started, self.keys = loaded, started, list(keys)
+        self.calls: list[str] = []
+
+    def start(self):
+        self.calls.append("start")
+        return self.started
+
+    def stop(self):
+        self.calls.append("stop")
+
+    def find_cli(self):
+        return "fake"
+
+    def model_keys(self):
+        return self.keys
+
+    def loaded(self, key):
+        return self.loaded_copy
+
+    def load(self, key, ctx):
+        self.calls.append(f"load {key} {ctx}")
+        return LoadedModel(id="inst-1", ctx=ctx, parallel=1)
+
+    def unload(self, model_id):
+        self.calls.append(f"unload {model_id}")
+        return True
+
+    def chat(self, model_id, opts, system, user, max_tokens, label):
+        if "FAIL" in user:
+            raise cli.TranscriptReportError("too long")
+        return "# Report"
 
 
 def parse(*argv):
@@ -65,7 +109,7 @@ class OutPath(unittest.TestCase):
 
 
 class Batch(unittest.TestCase):
-    """run() with LM Studio replaced by a fake model session and chat function."""
+    """run() with LM Studio replaced by a fake runner."""
 
     def test_all_skips_failures_and_moves_finished_transcripts(self):
         with tempfile.TemporaryDirectory() as d:
@@ -74,22 +118,14 @@ class Batch(unittest.TestCase):
             s.transcripts_dir.mkdir()
             for name, text in (("a.txt", "Fine video."), ("b.txt", "FAIL video."), ("c.txt", "")):
                 (s.transcripts_dir / name).write_text(text, encoding="utf-8")
-
-            @contextlib.contextmanager
-            def fake_session(*args):
-                yield "instance"
-
-            def fake_chat(client, instance, opts, system, user, max_tokens, label):
-                if "FAIL" in user:
-                    raise cli.TranscriptReportError("too long")
-                return "# Report"
+            runner = FakeRunner()
 
             with mock.patch.object(cli, "load_settings", return_value=s), \
-                 mock.patch.object(cli, "model_session", fake_session), \
-                 mock.patch.object(cli, "chat", fake_chat), \
+                 mock.patch.object(cli, "make_runner", return_value=runner), \
                  contextlib.redirect_stderr(io.StringIO()) as err:
                 code = cli.run(["--all", "--model", "pub/m"])
 
+            self.assertEqual(runner.calls[-2:], ["unload inst-1", "stop"])   # once, after the batch
             self.assertEqual(code, 1)
             self.assertIn("1 of 2 transcripts analysed", err.getvalue())
             self.assertIn("c.txt is empty", err.getvalue())
@@ -132,35 +168,39 @@ class SaveReport(unittest.TestCase):
 class ModelSession(unittest.TestCase):
     """model_session() frees what it set up, even when the analysis fails."""
 
-    def run_session(self, loaded=None, fail=False):
-        client = mock.Mock(local=False)
+    def run_session(self, runner, fail=False, listed=True):
         opts = cli.RunOptions(ctx=8192)
-        model = cli.ModelChoice("m", "pub/m", 8192, True)
-        with mock.patch.object(cli, "ensure_server", return_value=True), \
-             mock.patch.object(cli, "loaded_instance", return_value=loaded), \
-             mock.patch.object(cli, "load_model", return_value="inst-1"), \
-             mock.patch.object(cli, "unload_model") as unload, \
-             mock.patch.object(cli, "stop_server") as stop, \
-             contextlib.redirect_stderr(io.StringIO()):
-            try:
-                with cli.model_session(client, model, opts, None) as instance:
-                    if fail:
-                        raise cli.TranscriptReportError("boom")
-            except cli.TranscriptReportError:
-                instance = None
-        return instance, unload, stop, opts
+        model = cli.ModelChoice("m", "pub/m", 8192, listed)
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            with cli.model_session(runner, model, opts, None) as model_id:
+                if fail:
+                    raise cli.TranscriptReportError("boom")
+        return model_id, opts, err.getvalue()
 
     def test_loads_then_unloads_and_stops_server_after_failure(self):
-        _, unload, stop, _ = self.run_session(fail=True)
-        unload.assert_called_once_with(mock.ANY, "inst-1")
-        stop.assert_called_once()
+        runner = FakeRunner()
+        with self.assertRaisesRegex(cli.TranscriptReportError, "boom"):
+            self.run_session(runner, fail=True)
+        self.assertEqual(runner.calls, ["start", "load pub/m 8192", "unload inst-1", "stop"])
 
     def test_already_loaded_copy_is_used_and_left_loaded(self):
-        loaded = LoadedInstance(id="theirs", ctx=16384, parallel=1)
-        instance, unload, _, opts = self.run_session(loaded=loaded)
-        self.assertEqual(instance, "theirs")
+        runner = FakeRunner(loaded=LoadedModel(id="theirs", ctx=16384, parallel=1))
+        model_id, opts, err = self.run_session(runner)
+        self.assertEqual(model_id, "theirs")
         self.assertEqual(opts.ctx, 16384)
-        unload.assert_not_called()
+        self.assertIn("already loaded in ExampleLM", err)
+        self.assertEqual(runner.calls, ["start", "stop"])
+
+    def test_server_is_stopped_only_if_this_run_started_it(self):
+        runner = FakeRunner(started=False)
+        self.run_session(runner)
+        self.assertEqual(runner.calls, ["start", "load pub/m 8192", "unload inst-1"])
+
+    def test_model_key_the_server_doesnt_have(self):
+        runner = FakeRunner(keys=["other/model"])
+        with self.assertRaisesRegex(cli.TranscriptReportError, "an ExampleLM model key .*other/model"):
+            self.run_session(runner, listed=False)
+        self.assertEqual(runner.calls, ["start", "stop"])
 
 
 if __name__ == "__main__":

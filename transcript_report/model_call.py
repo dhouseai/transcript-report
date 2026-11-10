@@ -9,7 +9,7 @@ from http.client import HTTPException
 from .config import RunOptions
 from .errors import TranscriptReportError
 from .helpers import finish_progress, progress, strip_think, warn
-from .lmstudio import APIError, LMStudio, error_text
+from .http_client import APIError, JSONClient, error_text
 
 
 def too_long(opts: RunOptions) -> str:
@@ -77,11 +77,11 @@ def collect(events: Iterable[dict], label: str) -> tuple[list[str], dict | None]
     return out, None
 
 
-def chat(client: LMStudio, instance: str, opts: RunOptions,
+def chat(client: JSONClient, model_id: str, opts: RunOptions,
          system: str, user: str, max_tokens: int, label: str) -> str:
     """Send one request and return the reply text, with any reasoning removed."""
     body = {
-        "model": instance,
+        "model": model_id,
         "system_prompt": system,
         "input": user,
         "stream": True,

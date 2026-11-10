@@ -6,7 +6,9 @@ import urllib.error
 from unittest import mock
 
 from transcript_report import lmstudio
-from transcript_report.lmstudio import APIError, LMStudio
+from transcript_report.errors import TranscriptReportError
+from transcript_report.lmstudio import APIError, LMStudio, LMStudioRunner
+from transcript_report.runner import LoadedModel, make_runner
 
 
 def reply(data):
@@ -31,7 +33,7 @@ class Client(unittest.TestCase):
     def test_local_and_remote_urls(self):
         self.assertEqual(LMStudio(4321).url, "http://127.0.0.1:4321")
         remote = LMStudio(remote_url="http://pc:1234/")
-        self.assertFalse(remote.local)
+        self.assertFalse(remote.on_this_computer)
         self.assertEqual(remote.url, "http://pc:1234")
 
     def test_unauthorised_explains_the_token(self):
@@ -46,6 +48,36 @@ class Client(unittest.TestCase):
              self.assertRaises(APIError) as cm:
             LMStudio().call("GET", "/api/v1/models")
         self.assertIsNone(cm.exception.status)
+        self.assertIn("Can't reach LM Studio's server at http://127.0.0.1:1234", str(cm.exception))
+
+    def test_error_names_lm_studio_and_gives_its_message(self):
+        with mock.patch("urllib.request.urlopen", side_effect=http_error(400, "bad model")), \
+             self.assertRaises(APIError) as cm:
+            LMStudio().call("POST", "/api/v1/models/load")
+        self.assertEqual(str(cm.exception), "LM Studio error 400 on /api/v1/models/load: bad model")
+
+
+class Runner(unittest.TestCase):
+    def test_make_runner(self):
+        runner = make_runner("lmstudio", None, "", "")
+        self.assertIsInstance(runner, LMStudioRunner)
+        self.assertEqual(runner.url, "http://127.0.0.1:1234")
+        self.assertFalse(make_runner("lmstudio", 1234, "http://pc:1234", "").on_this_computer)
+        with self.assertRaisesRegex(TranscriptReportError, "Unknown runner 'other'"):
+            make_runner("other", None, "", "")
+
+    def test_load_reports_the_context_it_asked_for(self):
+        runner = LMStudioRunner(1234)
+        with mock.patch.object(lmstudio, "load_model", return_value="pub/m:2") as load:
+            inst = runner.load("pub/m", 16384)
+        load.assert_called_once_with(runner.client, "pub/m", 16384)
+        self.assertEqual(inst, LoadedModel(id="pub/m:2", ctx=16384, parallel=1))
+
+    def test_start_follows_the_server_to_its_port(self):
+        runner = LMStudioRunner(1234)
+        with mock.patch.object(lmstudio, "lms", return_value=(0, '{"running": true, "port": 5678}')):
+            self.assertFalse(runner.start())
+        self.assertEqual(runner.url, "http://127.0.0.1:5678")
 
 
 class Models(unittest.TestCase):
@@ -56,12 +88,12 @@ class Models(unittest.TestCase):
         {"no key": True},
     ]}
 
-    def test_keys_and_loaded_instance(self):
+    def test_keys_and_loaded_model(self):
         client = LMStudio()
         with mock.patch("urllib.request.urlopen", return_value=reply(self.MODELS)):
             self.assertEqual(lmstudio.model_keys(client), ["a/one", "b/two"])
-            self.assertIsNone(lmstudio.loaded_instance(client, "a/one"))
-            inst = lmstudio.loaded_instance(client, "b/two")
+            self.assertIsNone(lmstudio.loaded_model(client, "a/one"))
+            inst = lmstudio.loaded_model(client, "b/two")
         assert inst is not None
         self.assertEqual((inst.id, inst.ctx, inst.parallel), ("b/two:1", 16384, 4))
 

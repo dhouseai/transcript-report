@@ -10,8 +10,8 @@ from . import __version__
 from .config import ModelChoice, app_home, list_transcripts, load_prompts, load_settings, resolve_model
 from .errors import TranscriptReportError
 from .helpers import vram_info
-from .lmstudio import LMStudio, ensure_server, find_lms, model_keys, stop_server
 from .pdf import find_browser
+from .runner import Runner, make_runner
 
 OK, WARN, FAIL = "  ok  ", " warn ", " FAIL "
 
@@ -57,8 +57,8 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
         line(FAIL, "model setting", str(e))
         model = None
 
-    client = LMStudio(port, url_arg or settings.server_url, settings.api_token)
-    check_server(client, model, line)
+    runner = make_runner("lmstudio", port, url_arg or settings.server_url, settings.api_token)
+    check_server(runner, model, line)
 
     browser = find_browser()
     if browser:
@@ -67,8 +67,8 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
         line(FAIL if settings.report_format == "pdf" else WARN, "PDF browser",
              "Edge or Chrome not found, so reports can only be saved as Markdown")
 
-    if not client.local:
-        line(OK, "GPU", "on the LM Studio computer, so not checked from here")
+    if not runner.on_this_computer:
+        line(OK, "GPU", f"on the {runner.name} computer, so not checked from here")
     elif usage := vram_info():
         used, total = usage
         line(OK, "GPU", f"{used:,} / {total:,} MiB VRAM in use")
@@ -79,29 +79,29 @@ def run_check(model_arg: str | None, port: int, url_arg: str | None) -> int:
     return 1 if failed else 0
 
 
-def check_server(client: LMStudio, model: ModelChoice | None, line: Callable[[str, str, str], None]) -> None:
-    """The lms tool (on this computer), the server, and whether the model is downloaded.
+def check_server(runner: Runner, model: ModelChoice | None, line: Callable[[str, str, str], None]) -> None:
+    """The runner's command-line program (on this computer), the server, and whether the model is downloaded.
     A server started for the check is stopped again."""
-    if client.local:
+    if runner.on_this_computer:
         try:
-            line(OK, "LM Studio's lms tool", str(find_lms()))
+            line(OK, runner.cli, runner.find_cli())
         except TranscriptReportError as e:
-            line(FAIL, "LM Studio's lms tool", str(e))
+            line(FAIL, runner.cli, str(e))
             return
     started = False
     try:
-        started = ensure_server(client)
-        where = "on another computer" if not client.local else (
+        started = runner.start()
+        where = "on another computer" if not runner.on_this_computer else (
             "started for this check" if started else "already running")
-        line(OK, "LM Studio server", f"{client.url} ({where})")
-        keys = model_keys(client)
+        line(OK, f"{runner.name} server", f"{runner.url} ({where})")
+        keys = runner.model_keys()
         if model and model.key in keys:
             line(OK, "model downloaded", model.key)
         elif model:
-            line(FAIL, "model downloaded", f"LM Studio has no model with the key {model.key}. "
+            line(FAIL, "model downloaded", f"{runner.name} has no model with the key {model.key}. "
                                            f"Downloaded: {', '.join(keys) or 'none'}")
     except TranscriptReportError as e:
-        line(FAIL, "LM Studio server", str(e))
+        line(FAIL, f"{runner.name} server", str(e))
     finally:
         if started:
-            stop_server()
+            runner.stop()

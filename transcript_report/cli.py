@@ -41,20 +41,10 @@ from .config import (
 )
 from .errors import TranscriptReportError
 from .helpers import check_vram, finish_progress, progress, say, warn
-from .lmstudio import (
-    APIError,
-    LMStudio,
-    LoadedInstance,
-    ensure_server,
-    load_model,
-    loaded_instance,
-    model_keys,
-    stop_server,
-    unload_model,
-)
-from .model_call import chat
+from .http_client import APIError
 from .pdf import write_pdf
 from .pipeline import MIN_SECTION_WORDS, ChatFn, analyse
+from .runner import LoadedModel, Runner, make_runner
 from .transcripts import read_transcript
 
 
@@ -163,57 +153,59 @@ def save_report(report: str, out_path: Path, title: str) -> Path:
     return out_path
 
 
-def use_loaded_copy(existing: LoadedInstance, model: ModelChoice, opts: RunOptions,
-                    ctx_arg: int | None) -> None:
-    """Take the context size from a copy of the model that's already loaded, and warn about
-    anything in its setup that could make requests fail."""
-    say(f"Using {model.key}, already loaded in LM Studio "
+def use_loaded_copy(existing: LoadedModel, model: ModelChoice, opts: RunOptions,
+                    ctx_arg: int | None, server: str) -> None:
+    """Take the context size from a copy of the model that's already loaded in `server`
+    ("LM Studio"), and warn about anything in its setup that could make requests fail."""
+    say(f"Using {model.key}, already loaded in {server} "
         f"(context {existing.ctx or 'unknown'}). It stays loaded afterwards.")
     if existing.ctx:
         if ctx_arg and ctx_arg != existing.ctx:
             warn(f"--ctx {ctx_arg:,} is ignored: the loaded copy has a {existing.ctx:,}-token "
-                 f"context. Unload it in LM Studio to use a different size.")
+                 f"context. Unload it in {server} to use a different size.")
         opts.ctx = existing.ctx
     else:
-        warn(f"LM Studio didn't report the loaded copy's context size; assuming {opts.ctx:,}.")
+        warn(f"{server} didn't report the loaded copy's context size; assuming {opts.ctx:,}.")
     if existing.parallel > 1:
         warn(f"the loaded copy allows {existing.parallel} parallel requests, which can split "
              f"its context. If requests fail as too long, reload it with 1.")
 
 
 @contextmanager
-def model_session(client: LMStudio, model: ModelChoice, opts: RunOptions,
+def model_session(runner: Runner, model: ModelChoice, opts: RunOptions,
                   ctx_arg: int | None) -> Iterator[str]:
     """Start the server and load the model (or use an already-loaded copy); yields the
-    instance id. Afterwards frees the VRAM again, but leaves alone anything that was
+    id to send requests to. Afterwards frees the VRAM again, but leaves alone anything that was
     already running."""
     started_server = loaded_here = False
-    instance = ""
+    model_id = ""
     try:
-        started_server = ensure_server(client)
-        if not model.listed and model.key not in (keys := model_keys(client)):
+        started_server = runner.start()
+        if not model.listed and model.key not in (keys := runner.model_keys()):
             raise TranscriptReportError(
-                f"'{model.name}' isn't in \"models\" in settings.json or an LM Studio model key "
+                f"'{model.name}' isn't in \"models\" in settings.json or an {runner.name} model key "
                 f"(downloaded: {', '.join(keys) or 'none'}).")
-        existing = loaded_instance(client, model.key)
+        existing = runner.loaded(model.key)
         if existing:
-            instance = existing.id
-            use_loaded_copy(existing, model, opts, ctx_arg)
-            vram_advice = "unload other models in LM Studio"
+            model_id = existing.id
+            use_loaded_copy(existing, model, opts, ctx_arg, runner.name)
+            vram_advice = f"unload other models in {runner.name}"
         else:
             say(f"Model: {model.name}  ({model.key}, context {opts.ctx:,})")
-            instance = load_model(client, model.key, opts.ctx)
+            loaded = runner.load(model.key, opts.ctx)
+            model_id = loaded.id
             loaded_here = True
+            opts.ctx = loaded.ctx or opts.ctx
             vram_advice = f"lower --ctx (now {opts.ctx:,})"
-        if client.local:   # nvidia-smi only sees this computer's GPU
+        if runner.on_this_computer:   # nvidia-smi only sees this computer's GPU
             check_vram(vram_advice)
-        yield instance
+        yield model_id
     finally:
         finish_progress()
         if loaded_here:
-            unload_model(client, instance)
+            runner.unload(model_id)
         if started_server:
-            stop_server()
+            runner.stop()
 
 
 def analyse_transcript(transcript: Path, text: str, args: argparse.Namespace, settings: Settings,
@@ -290,10 +282,10 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
 
     start = time.monotonic()
     failed: list[str] = []
-    # On this computer, ensure_server may point the client at another port.
-    client = LMStudio(args.port, args.server_url or settings.server_url, settings.api_token)
-    with model_session(client, model, opts, args.ctx) as instance:
-        chat_fn = partial(chat, client, instance, opts)
+    # On this computer, starting the server may point the runner at another port.
+    runner = make_runner("lmstudio", args.port, args.server_url or settings.server_url, settings.api_token)
+    with model_session(runner, model, opts, args.ctx) as model_id:
+        chat_fn = partial(runner.chat, model_id, opts)
         for n, (transcript, text) in enumerate(jobs, 1):
             if len(jobs) > 1:
                 say(f"\n[{n}/{len(jobs)}] {transcript.name}")
@@ -301,7 +293,7 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
                 analyse_transcript(transcript, text, args, settings, prompts, opts, chat_fn)
             except TranscriptReportError as e:
                 # One video failing (e.g. too long for the context) shouldn't stop a batch,
-                # but losing LM Studio altogether should.
+                # but losing the server altogether should.
                 if len(jobs) == 1 or (isinstance(e, APIError) and e.status is None):
                     raise
                 finish_progress()
