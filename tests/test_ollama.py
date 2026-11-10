@@ -445,6 +445,12 @@ class Chat(unittest.TestCase):
         self.assertNotIsInstance(cm.exception, APIError)
         self.assertIn("this model can't think; run without --think", str(cm.exception))
 
+    def test_thinking_error_without_think_doesnt_say_to_drop_it(self):
+        with self.assertRaises(APIError) as cm:
+            self.send(http_error(400, '"gemma3:latest" does not support thinking'))
+        self.assertNotIn("run without --think", str(cm.exception))
+        self.assertIn("does not support thinking", str(cm.exception))
+
     def test_lost_connection_stops_a_batch(self):
         with self.assertRaises(APIError) as cm:
             self.send(BrokenStream())

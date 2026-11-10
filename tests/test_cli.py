@@ -209,14 +209,16 @@ class RunnerChoice(unittest.TestCase):
             cli.run(["--check", "--runner", "ollama"])
         check.assert_called_once_with(None, "ollama", None, None)
 
-    def test_init_names_the_runners_list_command(self):
+    def test_init_names_both_runners(self):
+        # The settings.json --init writes uses LM Studio until it says otherwise, even with --runner.
         s = Settings(Path("t"), Path("d"), Path("r"))
-        for argv, hint in (([], "`lms ls`"), (["--runner", "ollama"], "`ollama list`")):
+        for argv in ([], ["--runner", "ollama"]):
             with self.subTest(argv=argv), \
                  mock.patch.object(cli, "init_home", return_value=(Path("settings.json"), True, s)), \
                  contextlib.redirect_stdout(io.StringIO()) as out:
                 cli.run(["--init", *argv])
-            self.assertIn(f"\"key\" (run {hint} to see them)", out.getvalue())
+            self.assertIn("(run `lms ls` for LM Studio, `ollama list` for Ollama to see them; for Ollama also "
+                          "give the model \"runner\": \"ollama\")", out.getvalue())
 
 
 class SaveReport(unittest.TestCase):

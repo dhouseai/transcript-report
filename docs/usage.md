@@ -84,7 +84,7 @@ The file name becomes the report name, so name it after the video.
 | `--chunk-words <n>` | Words per section for long videos (default 10000; lowered automatically if a section wouldn't fit the context) |
 | `--single-max-words <n>` | Longer transcripts are split into sections (default 15000, about 100 minutes of speech) |
 | `--temperature <t>` | Sampling temperature (default: the model's `"sampling"`, else 0.4) |
-| `--port <n>` | Port for the runner's server on this computer (default 1234 for LM Studio, 11434 for Ollama). LM Studio's server, if it's already running, is used on its own port. Ollama is looked for only on this port: if Ollama is running on another one, a second server is started here and loads its own copy of the model, so leave `--port` out to use the running one |
+| `--port <n>` | Port for the runner's server on this computer (default 1234 for LM Studio, 11434 for Ollama). LM Studio's server, if it's already running, is used on its own port. Ollama is looked for only on this port: if Ollama is running on another one, a second server is started here and loads its own copy of the model. So if you've moved Ollama to another port with `OLLAMA_HOST`, pass that port with `--port` (`OLLAMA_HOST` itself isn't read) |
 | `--server-url <url>` | The runner on another computer, e.g. `http://192.168.1.20:1234` for LM Studio or `http://192.168.1.20:11434` for Ollama (default: `"server_url"`, for the `"runner"` setting's runner; else this computer). It changes only the address: the token is still `"api_token"` for the `"runner"` setting's runner, and none for the other |
 | `--version` | Print the version |
 

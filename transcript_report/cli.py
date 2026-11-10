@@ -17,6 +17,7 @@ from . import __version__
 from .check import run_check
 from .config import (
     HOME_ENV,
+    KEY_HINT,
     REPORT_FORMATS,
     RUNNERS,
     SAMPLING_DEFAULTS,
@@ -46,7 +47,7 @@ from .helpers import check_vram, finish_progress, progress, say, warn
 from .http_client import APIError
 from .pdf import write_pdf
 from .pipeline import MIN_SECTION_WORDS, ChatFn, analyse
-from .runner import LoadedModel, Runner, make_runner, runner_class
+from .runner import LoadedModel, Runner, make_runner
 from .transcripts import read_transcript
 
 
@@ -240,12 +241,12 @@ def analyse_transcript(transcript: Path, text: str, args: argparse.Namespace, se
             say(f"Transcript moved to {moved}")
 
 
-def run_init(runner_arg: str | None) -> int:
+def run_init() -> int:
     path, created, settings = init_home()
     if created:
-        list_hint = runner_class(choose_runner(runner_arg, None, settings)).list_hint
-        print(f"Created {path}\nOpen it and set your model's \"key\" ({list_hint} to see them) "
-              f"and \"ctx\", then run with --check.")
+        # Named for both runners: the file --init writes uses LM Studio until it says otherwise.
+        print(f"Created {path}\nOpen it and set your model's \"key\" ({KEY_HINT} to see them; for "
+              f"Ollama also give the model \"runner\": \"ollama\") and \"ctx\", then run with --check.")
     else:
         print(f"{path} already exists, so it was left as it is.")
     print(f"Put transcripts in: {settings.transcripts_dir}\nReports are saved in: {settings.reports_dir}")
@@ -275,7 +276,7 @@ def read_jobs(args: argparse.Namespace, settings: Settings) -> list[tuple[Path, 
 def run(argv: list[str] | None = None, prog: str | None = None) -> int:
     args = parse_args(argv, prog)
     if args.init:
-        return run_init(args.runner)
+        return run_init()
     if args.check:
         return run_check(args.model, args.runner, args.port, args.server_url)
 

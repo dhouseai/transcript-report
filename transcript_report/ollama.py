@@ -363,7 +363,7 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     try:
         resp = client.open("POST", "/api/chat", body, timeout=3600)
     except APIError as e:
-        if e.status == 400 and "does not support thinking" in str(e):
+        if opts.think and e.status == 400 and "does not support thinking" in str(e):
             raise TranscriptReportError(f"{model_id}: this model can't think; run without --think.") from None
         # A plain TranscriptReportError, not an APIError: in a batch, a video too long for the
         # context is skipped, while losing Ollama (an APIError with no status) stops the batch.
@@ -387,8 +387,9 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     hit_limit = done["done_reason"] == "length" if "done_reason" in done else None
     # The reply was cut off by the context, not by max_tokens: it stopped before using its
     # allowance, having filled the context or hit a limit. The backup in case an older Ollama
-    # ignores shift: false. A reply that ended by itself, or used its whole allowance, is kept;
-    # finish_reply() warns about it.
+    # ignores shift: false. A full context counts even when done_reason is "stop", as input and
+    # output can't add up to more than the context. A reply that ended by itself with room left,
+    # or used its whole allowance, is kept; finish_reply() warns about it.
     if prompt_tokens and output_tokens < max_tokens and (prompt_tokens + output_tokens >= opts.ctx or hit_limit):
         finish_progress()
         raise TranscriptReportError(f"{label}: {too_long(opts)}\n(Ollama read {prompt_tokens:,} tokens of input, "
