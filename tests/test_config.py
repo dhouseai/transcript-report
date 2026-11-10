@@ -246,7 +246,7 @@ class ChooseServer(unittest.TestCase):
         self.assertEqual(choose_server(None, local, "ollama"), ("", ""))   # LM Studio's token never goes to Ollama
 
     def test_server_url_arg_changes_only_the_address(self):
-        self.assertEqual(choose_server("http://x:1", self.s, "lmstudio"), ("http://x:1", "lm-token"))   # as in 0.1.0
+        self.assertEqual(choose_server("http://x:1", self.s, "lmstudio"), ("http://x:1", "lm-token"))
         self.assertEqual(choose_server("http://x:11434", self.s, "ollama"), ("http://x:11434", ""))
 
 
