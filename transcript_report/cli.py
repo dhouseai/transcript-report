@@ -163,18 +163,18 @@ def save_report(report: str, out_path: Path, title: str) -> Path:
 
 
 def use_loaded_copy(existing: LoadedModel, model: ModelChoice, opts: RunOptions,
-                    ctx_arg: int | None, server: str) -> None:
-    """Take the context size from a copy of the model that's already loaded in `server`
+                    ctx_arg: int | None, runner_name: str) -> None:
+    """Take the context size from a copy of the model that's already loaded in `runner_name`
     ("LM Studio"), and warn about anything in its setup that could make requests fail."""
-    say(f"Using {model.key}, already loaded in {server} "
+    say(f"Using {model.key}, already loaded in {runner_name} "
         f"(context {f'{existing.ctx:,}' if existing.ctx else 'unknown'}). It stays loaded afterwards.")
     if existing.ctx:
         if ctx_arg and ctx_arg != existing.ctx:
             warn(f"--ctx {ctx_arg:,} is ignored: the loaded copy has a {existing.ctx:,}-token "
-                 f"context. Unload it in {server} to use a different size.")
+                 f"context. Unload it in {runner_name} to use a different size.")
         opts.ctx = existing.ctx
     else:
-        warn(f"{server} didn't report the loaded copy's context size; assuming {opts.ctx:,}.")
+        warn(f"{runner_name} didn't report the loaded copy's context size; assuming {opts.ctx:,}.")
     if existing.parallel > 1:
         warn(f"the loaded copy allows {existing.parallel} parallel requests, which can split "
              f"its context. If requests fail as too long, reload it with 1.")
@@ -292,7 +292,6 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
 
     start = time.monotonic()
     failed: list[str] = []
-    # On this computer, starting the server may point the runner at another port.
     kind = choose_runner(args.runner, model, settings)
     runner = make_runner(kind, args.port, *choose_server(args.server_url, settings, kind))
     with model_session(runner, model, opts, args.ctx) as model_id:

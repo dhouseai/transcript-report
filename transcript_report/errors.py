@@ -7,6 +7,3 @@ class TranscriptReportError(Exception):
     Library code raises this instead of calling sys.exit(), so cleanup in `finally` blocks
     still runs and the functions can be tested. main() turns it into sys.exit(message).
     """
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)

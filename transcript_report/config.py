@@ -209,8 +209,8 @@ def load_settings(path: Path | None = None) -> Settings:
         source=path if exists else None,
         runner=runner,
         server_url=url,
-        # Each runner reads its own env var for a token (LM Studio's is LM_API_TOKEN), so one
-        # runner's token is never sent to another's server.
+        # Only settings.json's token: $LM_API_TOKEN is read by the LM Studio runner itself, so it
+        # never reaches another runner's server.
         api_token=values["api_token"],
     )
 

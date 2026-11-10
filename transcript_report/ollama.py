@@ -17,7 +17,7 @@ from .config import RunOptions
 from .errors import TranscriptReportError
 from .helpers import NO_WINDOW, finish_progress, progress, say, warn
 from .http_client import APIError, JSONClient, error_text
-from .model_call import Reply, finish_reply, is_context_error, too_long
+from .model_call import Reply, finish_reply, is_context_error, too_long_message
 from .runner import LoadedModel
 
 OLLAMA_PORT = 11434
@@ -368,7 +368,7 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
         # A plain TranscriptReportError, not an APIError: in a batch, a video too long for the
         # context is skipped, while losing Ollama (an APIError with no status) stops the batch.
         if e.status and is_context_error(str(e)):
-            raise TranscriptReportError(f"{too_long(opts)}\n{e}") from None
+            raise TranscriptReportError(f"{too_long_message(opts)}\n{e}") from None
         raise
     try:
         with resp:
@@ -380,7 +380,7 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     if done is None:
         finish_progress()
         raise TranscriptReportError(f"{label}: Ollama ended the reply early, without an error. If the input "
-                                    f"is long, the likely cause: {too_long(opts)}")
+                                    f"is long, the likely cause: {too_long_message(opts)}")
 
     prompt_tokens = int(done.get("prompt_eval_count") or 0)
     output_tokens = int(done.get("eval_count") or 0)
@@ -392,8 +392,8 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     # or used its whole allowance, is kept; finish_reply() warns about it.
     if prompt_tokens and output_tokens < max_tokens and (prompt_tokens + output_tokens >= opts.ctx or hit_limit):
         finish_progress()
-        raise TranscriptReportError(f"{label}: {too_long(opts)}\n(Ollama read {prompt_tokens:,} tokens of input, "
-                                    f"and the reply stopped after {output_tokens:,} of its {max_tokens:,}.)")
+        raise TranscriptReportError(f"{label}: {too_long_message(opts)}\n(Ollama read {prompt_tokens:,} tokens of "
+                                    f"input, and the reply stopped after {output_tokens:,} of its {max_tokens:,}.)")
     eval_ns = done.get("eval_duration") or 0
     return Reply(
         pieces=out,

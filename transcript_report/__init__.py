@@ -13,7 +13,7 @@ Modules:
     pipeline.py      single-pass or split analysis and the final report
     pdf.py           turning the Markdown report into a PDF (via Edge or Chrome)
     check.py         --check: testing the setup
-    helpers.py       VRAM check, token estimate, removing reasoning, progress line
+    helpers.py       status messages, VRAM check, token estimate, removing reasoning, progress line
     errors.py        TranscriptReportError, the one-line error messages shown to the user
 """
 

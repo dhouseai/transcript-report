@@ -34,8 +34,7 @@ def clean_transcript(text: str) -> str:
             elif not rest.strip():
                 line = ""                                   # a timestamp on its own line
             else:
-                fallback = SPOKEN_FALLBACK_RE.match(rest)    # every part is optional, so this always matches
-                n = fallback.end() if fallback else 0
+                n = SPOKEN_FALLBACK_RE.match(rest).end()    # every part is optional, so this always matches
                 if n:                                       # otherwise it's speech like "3:45 pm"
                     line = rest[n:]
         if line.strip():

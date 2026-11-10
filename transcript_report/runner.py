@@ -66,8 +66,8 @@ class Runner(Protocol):
 def make_runner(kind: str, port: int | None, url: str, token: str) -> Runner:
     """The runner for `kind`: on this computer (on `port`, or its usual one), or at `url`."""
     # Imported here because the runners import LoadedModel from this module.
-    from .lmstudio import LMStudioRunner
-    from .ollama import OllamaRunner
+    from .lmstudio import LMStudioRunner  # noqa: PLC0415
+    from .ollama import OllamaRunner  # noqa: PLC0415
 
     if kind == "lmstudio":
         return LMStudioRunner(port, url, token)

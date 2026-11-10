@@ -26,7 +26,7 @@ class Reply:
     seconds: float               # from sending the request to the end of the reply
 
 
-def too_long(opts: RunOptions) -> str:
+def too_long_message(opts: RunOptions) -> str:
     return (f"Input is too long for the {opts.ctx:,}-token context. "
             f"Raise --ctx, or lower --chunk-words or --single-max-words.")
 
@@ -118,7 +118,7 @@ def stream_chat(client: JSONClient, model_id: str, opts: RunOptions,
         # A plain TranscriptReportError, not an APIError: in a batch, a video too long for the
         # context is skipped, while losing LM Studio (an APIError with no status) stops the batch.
         if e.status and is_context_error(str(e)):
-            raise TranscriptReportError(f"{too_long(opts)}\n{e}") from None
+            raise TranscriptReportError(f"{too_long_message(opts)}\n{e}") from None
         raise
     try:
         with resp:
@@ -132,7 +132,7 @@ def stream_chat(client: JSONClient, model_id: str, opts: RunOptions,
         # most often because the input doesn't fit the context.
         finish_progress()
         raise TranscriptReportError(f"{label}: LM Studio ended the reply early. The most likely cause: "
-                                    f"{too_long(opts)}\nThe exact error is in LM Studio's server log "
+                                    f"{too_long_message(opts)}\nThe exact error is in LM Studio's server log "
                                     f"(Developer tab, or ~/.lmstudio/server-logs).")
 
     stats = result.get("stats", {})
