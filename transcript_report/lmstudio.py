@@ -1,4 +1,4 @@
-"""Starting LM Studio's local server, and loading and unloading the model in it.
+"""LM Studio's server, and loading and unloading the model in it.
 
 LM Studio is used instead of running llama-server directly because its programs are
 signed, so Windows Smart App Control lets them run.
@@ -148,8 +148,7 @@ def ensure_server(client: LMStudio) -> bool:
 def stop_server() -> None:
     code, out = lms("server", "stop")
     if code != 0:
-        warn(f"couldn't stop LM Studio's server ({out.strip()}). "
-             f"Stop it with `lms server stop`.")
+        warn(f"couldn't stop LM Studio's server ({out.strip()}). Stop it with `lms server stop`.")
 
 
 def model_keys(client: LMStudio) -> list[str]:
@@ -170,7 +169,7 @@ def loaded_model(client: LMStudio, key: str) -> LoadedModel | None:
 
 
 def load_model(client: LMStudio, key: str, ctx: int) -> str:
-    """Load the model fully on the GPU with flash attention and a single request slot.
+    """Load the model with flash attention, its KV cache on the GPU and a single request slot.
     Returns the id to send requests to (LM Studio's instance id) and to unload afterwards."""
     body = {"model": key, "context_length": ctx, "flash_attention": True,
             "offload_kv_cache_to_gpu": True, "parallel": 1}
@@ -192,13 +191,13 @@ def unload_after_interrupted_load(client: LMStudio, key: str, wait_s: int = 5) -
     say("Cancelling the model load...")
     try:
         for _ in range(wait_s):
-            inst = loaded_model(client, key)
-            if inst:
-                unload_model(client, inst.id)
+            loaded = loaded_model(client, key)
+            if loaded:
+                unload_model(client, loaded.id)
                 return
             time.sleep(1)
     except (TranscriptReportError, KeyboardInterrupt):
-        pass
+        pass   # best effort: the message below says what to do
     say(f"   If LM Studio still shows {key} as loaded, unload it there to free the VRAM.")
 
 
@@ -210,6 +209,5 @@ def unload_model(client: LMStudio, model_id: str) -> bool:
     except APIError as e:
         if e.status == 404:
             return True   # not loaded (any more): nothing to free
-        warn(f"couldn't unload {model_id} ({e}). Unload it in LM Studio "
-             f"to free the VRAM.")
+        warn(f"couldn't unload {model_id} ({e}). Unload it in LM Studio to free the VRAM.")
         return False

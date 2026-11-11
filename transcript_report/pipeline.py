@@ -9,7 +9,15 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from .config import NOTES_TOKENS, REPORT_TOKENS, SAFETY_TOKENS, Prompts, RunOptions
+from .config import (
+    NOTES_HEADINGS_USED,
+    NOTES_TOKENS,
+    REPORT_TOKENS,
+    SAFETY_TOKENS,
+    WORDS_PER_MINUTE,
+    Prompts,
+    RunOptions,
+)
 from .errors import TranscriptReportError
 from .helpers import est_tokens, say
 
@@ -67,7 +75,7 @@ def split_sections(text: str, words_per_section: int) -> list[str]:
 
 
 def header(opts: RunOptions, word_count: int) -> str:
-    h = f"Video length: about {word_count / 150:.0f} minutes ({word_count:,} words of transcript)."
+    h = f"Video length: about {word_count / WORDS_PER_MINUTE:.0f} minutes ({word_count:,} words of transcript)."
     return f"Video title: {opts.title}\n{h}" if opts.title else h
 
 
@@ -106,11 +114,11 @@ def section_user(opts: RunOptions, words: int, i: int, n: int, section: str) -> 
 
 
 def final_user(opts: RunOptions, words: int, notes: list[str]) -> str:
-    # 'Style evidence' and 'Padding' are headings in section_notes_prompt.md
-    # (config.load_prompts checks they're still there).
+    # Headings in section_notes_prompt.md (config.load_prompts checks they're still there).
+    style, padding = (f"'{h.lstrip('# ')}'" for h in NOTES_HEADINGS_USED)
     return (f"{header(opts, words)}\n\nThe transcript was too long to read in one go, so it "
             f"was split into sections and the notes below were extracted in order. Use the "
-            f"'Style evidence' and 'Padding' notes for the AI-generated and density scores."
+            f"{style} and {padding} notes for the AI-generated and density scores."
             f"\n\nSECTION NOTES:\n<notes>\n" + "\n\n".join(notes) + "\n</notes>" + FINISH)
 
 
@@ -149,9 +157,9 @@ def condense(opts: RunOptions, prompts: Prompts, notes: list[str], words: int,
                 batch = []
             batch.append(note)
         batches.append(batch)
-        if all(len(batch) == 1 for batch in batches):
+        if all(len(b) == 1 for b in batches):
             break   # can't shrink further by merging
-        to_merge = sum(len(batch) > 1 for batch in batches)
+        to_merge = sum(len(b) > 1 for b in batches)
         merged, batch_no = [], 0
         for batch in batches:
             if len(batch) == 1:
@@ -168,7 +176,8 @@ def condense(opts: RunOptions, prompts: Prompts, notes: list[str], words: int,
 
 
 NOTES_STAMP = "<!-- transcript-report section notes {} -->"
-NOTE_HEADING_RE = re.compile(r"(?m)^(?=## Notes for section \d+ of \d+$)")
+NOTE_HEADING = "## Notes for section {} of {}"
+NOTE_HEADING_RE = re.compile("(?m)^(?=" + re.escape(NOTE_HEADING).replace(r"\{\}", r"\d+") + "$)")
 
 
 def fingerprint(sections: list[str]) -> str:
@@ -201,11 +210,9 @@ def analyse(opts: RunOptions, prompts: Prompts, text: str, notes_path: Path, cha
     earlier run already saved there are skipped."""
     words = len(text.split())
     if report_budget(opts, prompts) <= 0:
-        raise TranscriptReportError(f"A {opts.ctx:,}-token context can't even fit the report prompt. "
-                                    f"Raise --ctx.")
+        raise TranscriptReportError(f"A {opts.ctx:,}-token context can't even fit the report prompt. Raise --ctx.")
 
-    single_user = (f"{header(opts, words)}\n\nFULL TRANSCRIPT:\n<transcript>\n{text}\n</transcript>"
-                   + FINISH)
+    single_user = f"{header(opts, words)}\n\nFULL TRANSCRIPT:\n<transcript>\n{text}\n</transcript>" + FINISH
     if est_tokens(single_user) <= report_budget(opts, prompts) and words <= opts.single_max_words:
         say(f"Single pass ({words:,} words)")
         return chat(prompts.report, single_user, opts.output_tokens(REPORT_TOKENS), "Writing report")
@@ -228,7 +235,7 @@ def analyse(opts: RunOptions, prompts: Prompts, text: str, notes_path: Path, cha
     for i, sec in enumerate(sections[len(notes):], len(notes) + 1):
         reply = chat(prompts.notes, section_user(opts, words, i, n, sec),
                      opts.output_tokens(NOTES_TOKENS), f"Section {i}/{n} notes")
-        notes.append(f"## Notes for section {i} of {n}\n\n{reply}")
+        notes.append(f"{NOTE_HEADING.format(i, n)}\n\n{reply}")
         save_notes(notes_path, fp, notes)   # keep the work if a later step fails
 
     notes = condense(opts, prompts, notes, words, notes_path, chat)

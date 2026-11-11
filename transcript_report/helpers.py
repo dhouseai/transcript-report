@@ -11,7 +11,7 @@ NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def vram_info() -> tuple[int, int] | None:
-    """(used, total) MiB on the first NVIDIA GPU, or None if nvidia-smi isn't available."""
+    """(used, total) MiB on the first NVIDIA GPU, or None if nvidia-smi is missing or fails."""
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.total,memory.used", "--format=csv,noheader,nounits"],
@@ -73,7 +73,7 @@ def progress(text: str, end: str = "") -> None:
         if end and text:
             say(text)
         return
-    print("\r" + text.ljust(78), end=end, file=sys.stderr, flush=True)  # noqa: T201
+    print("\r" + text.ljust(78), end=end, file=sys.stderr, flush=True)  # noqa: T201  (the progress line)
     _line_open = not end
 
 

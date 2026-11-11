@@ -55,7 +55,7 @@ def parse_subtitles(text: str) -> str:
     blocks = re.split(r"\n[ \t]*\n", text.lstrip("\ufeff").replace("\r\n", "\n"))
     for block in blocks:
         block_lines = [b.strip() for b in block.strip().split("\n")]
-        if not block_lines or block_lines[0].startswith(_SKIP_BLOCKS):
+        if block_lines[0].startswith(_SKIP_BLOCKS):
             continue
         # The text follows the timing line; before it there's only a cue number or id.
         # Without a timing line, the block is text that a stray blank line split off.

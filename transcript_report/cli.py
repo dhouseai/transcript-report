@@ -16,11 +16,14 @@ from pathlib import Path
 from . import __version__
 from .check import run_check
 from .config import (
+    DEFAULT_CHUNK_WORDS,
+    DEFAULT_SINGLE_MAX_WORDS,
     HOME_ENV,
     KEY_HINT,
     REPORT_FORMATS,
     RUNNERS,
     SAMPLING_DEFAULTS,
+    WORDS_PER_MINUTE,
     ModelChoice,
     Prompts,
     RunOptions,
@@ -45,6 +48,8 @@ from .config import (
 from .errors import TranscriptReportError
 from .helpers import check_vram, finish_progress, progress, say, warn
 from .http_client import APIError
+from .lmstudio import LMSTUDIO_PORT
+from .ollama import OLLAMA_PORT
 from .pdf import write_pdf
 from .pipeline import MIN_SECTION_WORDS, ChatFn, analyse
 from .runner import LoadedModel, Runner, make_runner
@@ -74,16 +79,17 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
                    help="The program that runs the model (default: the model's \"runner\" in settings.json, "
                         "else the \"runner\" setting, else lmstudio)")
     p.add_argument("--ctx", type=int, help="Context window (default: the model's \"ctx\" in settings.json)")
-    p.add_argument("--chunk-words", type=int, default=10000, help="Words per section for long videos")
-    p.add_argument("--single-max-words", type=int, default=15000,
-                   help="Longer transcripts are split into sections (~100 min of speech)")
+    p.add_argument("--chunk-words", type=int, default=DEFAULT_CHUNK_WORDS, help="Words per section for long videos")
+    p.add_argument("--single-max-words", type=int, default=DEFAULT_SINGLE_MAX_WORDS,
+                   help="Longer transcripts are split into sections "
+                        f"(~{DEFAULT_SINGLE_MAX_WORDS // WORDS_PER_MINUTE} min of speech)")
     p.add_argument("--temperature", type=float,
                    help="Sampling temperature (default: the model's \"sampling\" in settings.json, "
                         f"else {SAMPLING_DEFAULTS['temperature']})")
     p.add_argument("--think", action="store_true", help="Let the model reason first (slower)")
     p.add_argument("--port", type=int,
-                   help="Port for the runner's server on this computer (default: 1234 for LM Studio, "
-                        "11434 for Ollama)")
+                   help=f"Port for the runner's server on this computer (default: {LMSTUDIO_PORT} for LM Studio, "
+                        f"{OLLAMA_PORT} for Ollama)")
     p.add_argument("--server-url", metavar="URL",
                    help="The runner on another computer, e.g. http://192.168.1.20:1234 for LM Studio or "
                         "http://192.168.1.20:11434 for Ollama (default: \"server_url\" in settings.json, "
@@ -118,17 +124,22 @@ def parse_args(argv: list[str] | None = None, prog: str | None = None) -> argpar
     if args.temperature is not None and args.temperature < 0:
         p.error("--temperature can't be negative")
     if args.out and not args.out.is_dir():
-        if args.out.suffix and args.out.suffix.lower() not in (".md", ".pdf"):
+        if args.out.suffix and args.out.suffix.lower()[1:] not in REPORT_FORMATS:
             p.error("--out must end in .md or .pdf, or be a folder")
         if args.all:
             p.error("with --all, --out must be an existing folder")
     return args
 
 
+def report_format(fmt_flag: str | None, settings: Settings) -> str:
+    """--pdf/--md, else "report_format" in settings.json."""
+    return fmt_flag or settings.report_format
+
+
 def choose_out_path(out: Path | None, fmt_flag: str | None, settings: Settings,
                     transcript: Path) -> Path:
     """Where to save the report. Format: --out's extension, else --pdf/--md, else settings.json."""
-    fmt = fmt_flag or settings.report_format
+    fmt = report_format(fmt_flag, settings)
     if out is None:
         return report_path(transcript, settings.reports_dir, fmt)
     if out.is_dir():
@@ -221,7 +232,7 @@ def analyse_transcript(transcript: Path, text: str, args: argparse.Namespace, se
                        prompts: Prompts, opts: RunOptions, chat_fn: ChatFn) -> None:
     """Analyse one transcript, save the report and move the transcript to the done folder."""
     start = time.monotonic()
-    fmt = args.format or settings.report_format
+    fmt = report_format(args.format, settings)
     out_path = None
     if args.resume and args.out is None:
         out_path = find_resumable(transcript, settings.reports_dir, fmt)
@@ -320,7 +331,8 @@ def run(argv: list[str] | None = None, prog: str | None = None) -> int:
 
 
 def main(argv: list[str] | None = None, prog: str | None = None) -> None:
-    # Windows consoles default to cp1252, which can't print emoji/arrows in the report.
+    # Windows consoles default to cp1252, which can't print emoji/arrows in transcript names,
+    # paths or the server's error messages.
     # Some IDE consoles replace the streams with objects that can't be reconfigured, and
     # under pythonw they are None.
     for stream in (sys.stdout, sys.stderr):

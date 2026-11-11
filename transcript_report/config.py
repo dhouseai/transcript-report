@@ -35,6 +35,9 @@ THINK_TOKENS = 4000       # extra output room per call with --think (reasoning c
 SAFETY_TOKENS = 400
 MIN_FREE_VRAM_MB = 2048   # below this, Windows starts using shared memory and it slows right down
 REPORT_FORMATS = ("md", "pdf")
+DEFAULT_CHUNK_WORDS = 10000        # words per section for long videos
+DEFAULT_SINGLE_MAX_WORDS = 15000   # longer transcripts are split into sections
+WORDS_PER_MINUTE = 150             # speaking rate, for a video's length in minutes
 TRANSCRIPT_SUFFIXES = (".txt", ".srt", ".vtt")
 MAX_NAME_CHARS = 80       # report folder/file names are cut to this, to stay under Windows' MAX_PATH
 
@@ -63,7 +66,7 @@ KNOWN_SETTINGS = (*STRING_DEFAULTS, "models")
 SETTING_KINDS = {   # what each setting must be, for error messages
     **dict.fromkeys(FOLDER_DEFAULTS, "a folder path"),
     "prompts_folder": "a folder path, or empty",
-    "report_format": "\"md\" or \"pdf\"",
+    "report_format": " or ".join(f"\"{f}\"" for f in REPORT_FORMATS),
     "default_model": "a model name from \"models\"",
     "runner": RUNNER_CHOICES,
     "server_url": "an address such as \"http://192.168.1.20:1234\", or empty",
@@ -124,8 +127,8 @@ class RunOptions:
     """What the analysis needs to know about this run (from the command line and the model)."""
     ctx: int
     title: str = ""
-    chunk_words: int = 10000
-    single_max_words: int = 15000
+    chunk_words: int = DEFAULT_CHUNK_WORDS
+    single_max_words: int = DEFAULT_SINGLE_MAX_WORDS
     think: bool = False
     sampling: dict[str, float] = field(default_factory=lambda: dict(SAMPLING_DEFAULTS))
 
@@ -190,10 +193,10 @@ def load_settings(path: Path | None = None) -> Settings:
 
     report_format = values["report_format"].lower()
     if report_format not in REPORT_FORMATS:
-        raise TranscriptReportError(f"Setting 'report_format' in {path.name} must be \"md\" or \"pdf\".")
+        raise TranscriptReportError(f"Setting 'report_format' in {path.name} must be {SETTING_KINDS['report_format']}.")
     runner = values["runner"].lower()
     if runner not in RUNNERS:
-        raise TranscriptReportError(f"Setting 'runner' in {path.name} must be {RUNNER_CHOICES}.")
+        raise TranscriptReportError(f"Setting 'runner' in {path.name} must be {SETTING_KINDS['runner']}.")
     url = values["server_url"]
     if url:
         url = normalise_url(url, f"Setting 'server_url' in {path.name}")
@@ -409,8 +412,8 @@ def resolve_model(model_arg: str | None, settings: Settings) -> ModelChoice:
         if m.key.startswith("REPLACE-"):
             raise TranscriptReportError(f"Model '{name}' in {settings.source or SETTINGS_NAME} still has the example "
                                         f"\"key\". Replace it with your model's key ({KEY_HINT}).")
-        return ModelChoice(name, m.key, m.ctx, True, m.sampling, m.runner)
-    return ModelChoice(name, name, DEFAULT_CTX, False)
+        return ModelChoice(name=name, key=m.key, ctx=m.ctx, listed=True, sampling=m.sampling, runner=m.runner)
+    return ModelChoice(name=name, key=name, ctx=DEFAULT_CTX, listed=False)
 
 
 def choose_runner(runner_arg: str | None, model: ModelChoice | None, settings: Settings) -> str:
@@ -419,11 +422,11 @@ def choose_runner(runner_arg: str | None, model: ModelChoice | None, settings: S
     return runner_arg or (model.runner if model else "") or settings.runner
 
 
-def choose_server(url_arg: str | None, settings: Settings, runner: str) -> tuple[str, str]:
-    """(server address, API token) for `runner`, the runner chosen for this run (empty address:
+def choose_server(url_arg: str | None, settings: Settings, kind: str) -> tuple[str, str]:
+    """(server address, API token) for `kind`, the runner chosen for this run (empty address:
     this computer). The "server_url" and "api_token" settings are for the "runner" setting's
     runner; the other runner is on this computer, with no token. --server-url changes only the
     address."""
-    if runner == settings.runner:
+    if kind == settings.runner:
         return url_arg or settings.server_url, settings.api_token
     return url_arg or "", ""

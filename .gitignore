@@ -1,4 +1,4 @@
-# Your own settings: copy settings.example.json to settings.json
+# Your own settings (`--init` creates it from transcript_report/settings.example.json)
 /settings.json
 
 # Transcripts: keep the folder (the script looks in it), not the files

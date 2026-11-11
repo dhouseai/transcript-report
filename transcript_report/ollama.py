@@ -17,11 +17,12 @@ from .config import RunOptions
 from .errors import TranscriptReportError
 from .helpers import NO_WINDOW, finish_progress, progress, say, warn
 from .http_client import APIError, JSONClient, error_text
-from .model_call import Reply, finish_reply, is_context_error, too_long_message
+from .model_call import Reply, finish_reply, raise_if_context_error, too_long_message
 from .runner import LoadedModel
 
 OLLAMA_PORT = 11434
-KEEP_ALIVE = "30m"    # how long Ollama keeps the model loaded after a request, if it isn't unloaded
+KEEP_ALIVE_MIN = 30   # how long Ollama keeps the model loaded after a request, if it isn't unloaded
+KEEP_ALIVE = f"{KEEP_ALIVE_MIN}m"
 MIN_KEEP_ALIVE_S = 300
 START_WAIT_S = 20     # how long a server this run starts has to answer
 if sys.platform == "win32":
@@ -286,8 +287,8 @@ def unload_after_interrupted_load(client: Ollama, key: str, wait_s: int = 5) -> 
                 return
             time.sleep(1)
     except (TranscriptReportError, KeyboardInterrupt):
-        pass
-    say(f"   If Ollama still has {key} loaded, it unloads it by itself within 30 minutes.")
+        pass   # best effort: the message below says what to do
+    say(f"   If Ollama still has {key} loaded, it unloads it by itself within {KEEP_ALIVE_MIN} minutes.")
 
 
 def unload_model(client: Ollama, model_id: str) -> bool:
@@ -298,7 +299,7 @@ def unload_model(client: Ollama, model_id: str) -> bool:
     except APIError as e:
         if e.status == 404:
             return True   # no such model, so nothing is loaded
-        warn(f"couldn't unload {model_id} ({e}). Ollama unloads it by itself within 30 minutes.")
+        warn(f"couldn't unload {model_id} ({e}). Ollama unloads it by itself within {KEEP_ALIVE_MIN} minutes.")
         return False
 
 
@@ -365,10 +366,7 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     except APIError as e:
         if opts.think and e.status == 400 and "does not support thinking" in str(e):
             raise TranscriptReportError(f"{model_id}: this model can't think; run without --think.") from None
-        # A plain TranscriptReportError, not an APIError: in a batch, a video too long for the
-        # context is skipped, while losing Ollama (an APIError with no status) stops the batch.
-        if e.status and is_context_error(str(e)):
-            raise TranscriptReportError(f"{too_long_message(opts)}\n{e}") from None
+        raise_if_context_error(e, opts)
         raise
     try:
         with resp:
@@ -385,11 +383,10 @@ def stream_chat(client: Ollama, model_id: str, opts: RunOptions, system: str, us
     prompt_tokens = int(done.get("prompt_eval_count") or 0)
     output_tokens = int(done.get("eval_count") or 0)
     hit_limit = done["done_reason"] == "length" if "done_reason" in done else None
-    # The reply was cut off by the context, not by max_tokens: it stopped before using its
-    # allowance, having filled the context or hit a limit. The backup in case an older Ollama
-    # ignores shift: false. A full context counts even when done_reason is "stop", as input and
-    # output can't add up to more than the context. A reply that ended by itself with room left,
-    # or used its whole allowance, is kept; finish_reply() warns about it.
+    # Cut off by the context, not by max_tokens: it stopped short of its allowance with the context
+    # full (even if done_reason says "stop") or with done_reason "length". A backup in case an older
+    # Ollama ignores shift: false. Replies that ended by themselves, or used their whole allowance,
+    # are kept; finish_reply() warns about the latter.
     if prompt_tokens and output_tokens < max_tokens and (prompt_tokens + output_tokens >= opts.ctx or hit_limit):
         finish_progress()
         raise TranscriptReportError(f"{label}: {too_long_message(opts)}\n(Ollama read {prompt_tokens:,} tokens of "

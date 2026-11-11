@@ -1,5 +1,5 @@
 """Sending one chat request to LM Studio's /api/v1/chat and streaming the reply (SSE), and
-the checks on a finished reply that every runner shares."""
+what every runner shares: spotting context errors and the checks on a finished reply."""
 
 import json
 import re
@@ -31,7 +31,7 @@ def too_long_message(opts: RunOptions) -> str:
             f"Raise --ctx, or lower --chunk-words or --single-max-words.")
 
 
-# How llama.cpp and LM Studio word "the input doesn't fit", e.g. "the number of tokens to keep
+# How llama.cpp (also behind Ollama) and LM Studio word "the input doesn't fit", e.g. "the number of tokens to keep
 # from the initial prompt is greater than the context length", "context overflow", "n_ctx".
 _CONTEXT_ERROR_RE = re.compile(
     r"context (length|window|size|overflow|shift)|n_ctx|exceeds? the context|"
@@ -39,8 +39,16 @@ _CONTEXT_ERROR_RE = re.compile(
 
 
 def is_context_error(message: str) -> bool:
-    """Whether an LM Studio error message says the input doesn't fit the context."""
+    """Whether a runner's error message says the input doesn't fit the context."""
     return bool(_CONTEXT_ERROR_RE.search(message))
+
+
+def raise_if_context_error(e: APIError, opts: RunOptions) -> None:
+    """Raise a server's "input doesn't fit" error again as a plain TranscriptReportError, not an
+    APIError: in a batch, a video too long for the context is skipped, while losing the server
+    (an APIError with no status) stops the batch."""
+    if e.status and is_context_error(str(e)):
+        raise TranscriptReportError(f"{too_long_message(opts)}\n{e}") from None
 
 
 def parse_sse(lines: Iterable[bytes]) -> Iterator[dict]:
@@ -115,10 +123,7 @@ def stream_chat(client: JSONClient, model_id: str, opts: RunOptions,
     try:
         resp = client.open("POST", "/api/v1/chat", body, timeout=3600)
     except APIError as e:
-        # A plain TranscriptReportError, not an APIError: in a batch, a video too long for the
-        # context is skipped, while losing LM Studio (an APIError with no status) stops the batch.
-        if e.status and is_context_error(str(e)):
-            raise TranscriptReportError(f"{too_long_message(opts)}\n{e}") from None
+        raise_if_context_error(e, opts)
         raise
     try:
         with resp:
@@ -154,8 +159,7 @@ def finish_reply(reply: Reply, opts: RunOptions, max_tokens: int, label: str) ->
     tps = f"{reply.tokens_per_s:.1f} tok/s" if reply.tokens_per_s else "? tok/s"
     progress(f"{label}: done - {reply.output_tokens:,} tokens, {tps}, {reply.seconds:.0f}s", end="\n")
     if reply.prompt_tokens and reply.prompt_tokens >= opts.ctx - max_tokens:
-        warn("input nearly filled the context window. "
-             "Lower --chunk-words or raise --ctx.")
+        warn("input nearly filled the context window. Lower --chunk-words or raise --ctx.")
     # Without a stop reason, using the whole allowance counts as hitting the limit.
     cut_off = reply.output_tokens >= max_tokens if reply.hit_limit is None else reply.hit_limit
     if cut_off:
